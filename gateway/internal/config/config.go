@@ -37,6 +37,15 @@ type Config struct {
 	EngineTimeout time.Duration
 	// CacheTTL is how long a cached book snapshot is considered fresh.
 	CacheTTL time.Duration
+
+	// KafkaBootstrap is the Kafka broker list (comma-separated) the trade-tape
+	// consumer reads the `trades` topic from.
+	KafkaBootstrap string
+	// TradesTopic is the topic the engine publishes executed trades to.
+	TradesTopic string
+	// TapeConsumerGroup is this gateway's consumer group for the trade tape.
+	// Each gateway replica joins the same group; partitions are shared across them.
+	TapeConsumerGroup string
 }
 
 // Load reads configuration from the environment, applying defaults. It never
@@ -62,6 +71,9 @@ func Load() (*Config, []string) {
 		RateLimitBurst:     getenvInt("RATE_LIMIT_BURST", 40),
 		EngineTimeout:      getenvDuration("ENGINE_TIMEOUT", 3*time.Second),
 		CacheTTL:           getenvDuration("CACHE_TTL", 1*time.Second),
+		KafkaBootstrap:     getenv("KAFKA_BOOTSTRAP", "localhost:9092"),
+		TradesTopic:        getenv("TRADES_TOPIC", "trades"),
+		TapeConsumerGroup:  getenv("TAPE_CONSUMER_GROUP", "gateway-tape"),
 	}
 	return cfg, warnings
 }
@@ -69,8 +81,9 @@ func Load() (*Config, []string) {
 // String renders config for boot logging WITHOUT leaking the secret.
 func (c *Config) String() string {
 	return fmt.Sprintf(
-		"listen=%s engine=%s redis=%s rps=%.1f burst=%d engineTimeout=%s cacheTTL=%s jwtSecret=<redacted>",
+		"listen=%s engine=%s redis=%s kafka=%s tradesTopic=%s tapeGroup=%s rps=%.1f burst=%d engineTimeout=%s cacheTTL=%s jwtSecret=<redacted>",
 		c.ListenAddr, c.EngineGRPCAddr, c.RedisAddr,
+		c.KafkaBootstrap, c.TradesTopic, c.TapeConsumerGroup,
 		c.RateLimitPerSecond, c.RateLimitBurst, c.EngineTimeout, c.CacheTTL,
 	)
 }

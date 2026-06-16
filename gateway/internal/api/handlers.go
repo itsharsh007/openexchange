@@ -93,19 +93,12 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// On a fill, push a trade event to all dashboards in real time.
-	if ack.Status == engine.StatusFilled || ack.Status == engine.StatusPartiallyFilled {
-		s.hub.Broadcast(map[string]any{
-			"type": "trade",
-			"trade": engine.Trade{
-				TradeID:    "trade-" + ack.OrderID,
-				Symbol:     o.Symbol,
-				PriceTicks: o.PriceTicks,
-				Quantity:   ack.FilledQuantity,
-				TsMillis:   time.Now().UnixMilli(),
-			},
-		})
-	}
+	// NOTE: the real-time trade tape is NOT synthesized here anymore. Every
+	// executed trade — including the resting (maker) side that never called this
+	// gateway — is published by the engine to the Kafka `trades` topic and fanned
+	// out to all dashboards by internal/tape.TradeConsumer. Synthesizing a trade
+	// from this one submitter's ack would miss the maker side and could disagree
+	// with the engine's authoritative price.
 
 	status := http.StatusCreated
 	if ack.Status == engine.StatusRejected {

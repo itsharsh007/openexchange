@@ -24,6 +24,7 @@ import (
 	"github.com/itsharsh007/openexchange/gateway/internal/config"
 	"github.com/itsharsh007/openexchange/gateway/internal/engine"
 	"github.com/itsharsh007/openexchange/gateway/internal/middleware"
+	"github.com/itsharsh007/openexchange/gateway/internal/tape"
 	"github.com/itsharsh007/openexchange/gateway/internal/ws"
 )
 
@@ -60,6 +61,18 @@ func main() {
 	// WebSocket hub.
 	hub := ws.NewHub()
 	go hub.Run()
+
+	// Trade tape: consume the engine's Kafka `trades` topic and fan each real
+	// trade out to every connected dashboard. Non-fatal if Kafka is down — the
+	// reader reconnects with backoff, so REST/WS keep serving meanwhile.
+	tapeCtx, stopTape := context.WithCancel(context.Background())
+	tradeTape := tape.NewTradeConsumer(
+		[]string{cfg.KafkaBootstrap}, cfg.TradesTopic, cfg.TapeConsumerGroup, hub)
+	go tradeTape.Run(tapeCtx)
+	defer func() {
+		stopTape()
+		_ = tradeTape.Close()
+	}()
 
 	// Middleware + routes.
 	rl := middleware.NewRateLimiter(cfg.RateLimitPerSecond, cfg.RateLimitBurst)

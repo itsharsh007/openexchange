@@ -8,7 +8,8 @@ top-of-book in Redis.
 
 ```
 React dashboard ──REST + WS──> [ gateway ] ──gRPC──> Java matching engine
-                                   │
+                                   │  ▲                      │
+                                   │  └── Kafka `trades` ◄────┘ (live trade tape)
                                    └── Redis (hot top-of-book cache)
 ```
 
@@ -32,10 +33,12 @@ React dashboard ──REST + WS──> [ gateway ] ──gRPC──> Java matchi
 1. **REST**: submit/cancel orders, fetch an order-book snapshot, health check.
 2. **WebSocket**: a fan-out hub broadcasting live trades + book updates to every
    connected client.
-3. **gRPC client** to the Java matching engine (real adapter in
+3. **Trade tape**: a Kafka consumer of the engine's `trades` topic that fans every
+   *real* executed trade out to all dashboards over WebSocket (`internal/tape/`).
+4. **gRPC client** to the Java matching engine (real adapter in
    `internal/engine/grpc_client.go`; a `MockClient` remains for tests).
-4. **Middleware**: per-client token-bucket rate limiting + JWT bearer auth.
-5. **Redis** caching of top-of-book, degrading gracefully when Redis is down.
+5. **Middleware**: per-client token-bucket rate limiting + JWT bearer auth.
+6. **Redis** caching of top-of-book, degrading gracefully when Redis is down.
 
 ## Architecture / package layout
 ```
@@ -47,6 +50,7 @@ genproto/                    # generated protobuf/gRPC stubs (make proto)
 internal/middleware/         # ratelimit.go (token bucket), auth.go (JWT)
 internal/cache/              # Redis wrapper with graceful degradation
 internal/ws/                 # WebSocket fan-out hub (register/unregister/broadcast)
+internal/tape/               # Kafka `trades` consumer -> decode proto Trade -> hub.Broadcast
 internal/api/                # HTTP handlers + routing
 ```
 **Design principle — dependency inversion:** handlers depend on the small
@@ -68,6 +72,9 @@ it boot with zero config in dev.
 | `RATE_LIMIT_BURST` | `40` | Bucket capacity (max burst) per client |
 | `ENGINE_TIMEOUT` | `3s` | Per-call timeout to the engine |
 | `CACHE_TTL` | `1s` | Freshness window for cached book snapshots |
+| `KAFKA_BOOTSTRAP` | `localhost:9092` | Kafka brokers for the trade-tape consumer |
+| `TRADES_TOPIC` | `trades` | Topic the engine publishes executed trades to |
+| `TAPE_CONSUMER_GROUP` | `gateway-tape` | Consumer group for the trade tape |
 
 ## Running it
 ```bash
@@ -109,7 +116,9 @@ curl -s -X POST localhost:8080/orders \
 {"order_id":"o1","status":"ACCEPTED","filled_quantity":0}
 ```
 The `order_id` is assigned by the engine. A crossing order returns
-`{"status":"FILLED", ...}` and (once wired) triggers a WS trade broadcast.
+`{"status":"FILLED", ...}`. The resulting trade reaches dashboards over the
+WebSocket tape, sourced from the engine's Kafka `trades` topic (not synthesized
+from this ack — see [How the trade tape works](#how-the-trade-tape-works)).
 Rejections return HTTP 422 with a `reason`.
 
 ### `DELETE /orders/{id}` — cancel
@@ -179,6 +188,27 @@ detects dead peers). **Backpressure:** the hub does a *non-blocking* send to eac
 client; if a client's buffer is full it's deemed too slow and is dropped —
 one laggard can never stall the entire feed.
 
+## How the trade tape works
+`internal/tape/tape.go`. A `kafka-go` reader subscribes to the engine's `trades`
+topic as consumer group `TAPE_CONSUMER_GROUP`. For each record it
+`proto.Unmarshal`s the **protobuf `Trade`** (the same `proto/` contract the engine
+publishes), maps it to the dashboard envelope `{"type":"trade","trade":{…}}`, and
+hands it to `hub.Broadcast` for fan-out.
+
+**Why consume the engine's stream instead of synthesizing a trade from the order
+ack?** The ack only describes *this* submitter's side. The tape must show every
+trade to everyone, including the resting (maker) counterparty that never called
+this gateway — and at the engine's authoritative price. Only the engine's trade
+stream has that complete view. Kafka also decouples the two: a gateway restart
+never blocks the engine, and each gateway replica is its own group member.
+
+**Resilience:** the reader connects lazily and reconnects with backoff, so a
+broker that is down at boot (or mid-run) is non-fatal — REST/WS keep serving and
+the tape resumes when Kafka returns. A single undecodable record is logged and
+skipped, never stalling the loop. The consumer starts from the latest offset (a
+live feed, not a historical backfill). Config: `KAFKA_BOOTSTRAP`, `TRADES_TOPIC`,
+`TAPE_CONSUMER_GROUP`.
+
 ## Redis caching & graceful degradation
 `internal/cache/cache.go`. Top-of-book is cached with a short TTL (`CACHE_TTL`).
 Crucially, **a cache failure never fails a request**: on any Redis error `GetBook`
@@ -228,9 +258,15 @@ go vet ./...
 go test -race ./...
 ```
 Tests cover the token-bucket limiter (burst, per-client isolation, burst cap via
-an injected clock) and the WS hub (broadcast delivery + slow-client drop), all
+an injected clock), the WS hub (broadcast delivery + slow-client drop), and the
+trade tape (protobuf `Trade` → dashboard envelope decode, hub forwarding) — all
 clean under the race detector.
 ```
 ok  github.com/itsharsh007/openexchange/gateway/internal/middleware
+ok  github.com/itsharsh007/openexchange/gateway/internal/tape
 ok  github.com/itsharsh007/openexchange/gateway/internal/ws
 ```
+
+> Live end-to-end (engine → real Kafka broker → tape → WS) is not covered by
+> `go test` (no embedded broker in Go); it's exercised in the integrated demo
+> once `make infra` is up.
