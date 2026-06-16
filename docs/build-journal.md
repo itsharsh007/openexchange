@@ -122,4 +122,55 @@ Format of each entry: **Symptom → Cause → Fix → Lesson.**
 - **Lesson:** test-util helpers drift between library versions; when a helper is missing, drop to the
   underlying client API rather than chasing the exact version that has it.
 
-<!-- Append new entries below as the gateway consumer, risk service, and infra phases land. -->
+### Risk consumer: `ModuleNotFoundError: google.protobuf` when decoding a trade
+- **Symptom:** decoding the protobuf `Trade` in the Python risk service failed with
+  `ModuleNotFoundError: google.protobuf`.
+- **Cause:** only `confluent-kafka` was a dependency; the protobuf **runtime** wheel wasn't
+  installed. protobuf splits the **compiler** (`protoc`, used at codegen time) from the **runtime**
+  (`protobuf` pip package, needed to load generated `_pb2.py`) — and protoc 28.1 emits code that
+  needs runtime ≥ 5.28.
+- **Fix:** `pip install 'protobuf>=5.28,<6'` and pinned it in `risk/requirements.txt`. Codegen still
+  uses the standalone `protoc` (already installed), **not** the heavy `grpcio-tools`.
+- **Lesson:** generated `_pb2.py` needs a runtime whose major version matches the protoc that
+  produced it; install the light `protobuf` wheel, keep `protoc` as the compiler.
+
+### Risk consumer: keeping import-safety with a generated stub
+- **Symptom (avoided):** importing the generated stub at module top would break the hard requirement
+  that `app.kafka_consumer` imports on a bare box (no Kafka, no protobuf installed) — needed for
+  tests and `py_compile`.
+- **Fix:** import the stub **lazily inside the decode path** (`_decode_trade`), mirroring the existing
+  lazy `confluent_kafka` import. Tests use `pytest.importorskip` so a bare box skips the protobuf
+  test cleanly. Verified via `sys.modules` that a plain import pulls in neither `google.protobuf` nor
+  the stub.
+- **Lesson:** keep optional/generated dependencies behind call-time imports so module import stays
+  side-effect-free.
+
+> Machine note: the risk suite was run against the **system** Python 3.12 (no venv in the repo), so
+> `protobuf` was installed globally. A repo-local venv would isolate this — tracked for the infra
+> phase.
+
+### The big one: `trades` wire-format mismatch across three services
+- **Symptom:** the engine was changed to publish the **protobuf** `Trade` to the `trades` topic, but
+  the already-scaffolded risk consumer did `json.loads(msg.value())` and the gateway broadcast a
+  **synthetic** JSON trade built from the submitter's ack. Three services, two different assumptions
+  about what's on the topic.
+- **Cause:** the topic format was never pinned in one place; each service guessed when scaffolded.
+- **Fix:** pinned it in **ADR 0003** — the topic carries the shared protobuf `Trade`, keyed by
+  symbol. Then made every consumer agree: gateway `proto.Unmarshal` → WS envelope; risk
+  `Trade.FromString` → feature store. The synthetic gateway trade was deleted (it could only see the
+  taker side and might disagree with the engine's authoritative price).
+- **Lesson:** the wire format of a topic is a **contract** — decide it once (an ADR + the `proto/`
+  message) before any producer or consumer is written, or services silently disagree. The clean
+  separation the consumers already had (decode step vs. business logic) made retrofitting the decode
+  a one-function change on each side.
+
+### Gateway: `go mod tidy` pulled yaml/spew/difflib after adding kafka-go
+- **Symptom:** adding `segmentio/kafka-go` added `gopkg.in/yaml.v3`, `go-spew`, `go-difflib` to
+  `go.sum`.
+- **Cause:** those are kafka-go's *test* dependencies, surfaced as `// indirect` requires.
+- **Fix:** none needed — indirect test-only modules don't end up in the built binary; `go build`
+  stays clean. Left as-is.
+- **Lesson:** a new dependency can grow `go.sum` with its test deps; that's expected and not bloat in
+  the shipped binary.
+
+<!-- Append new entries below as the infra phase / live end-to-end demo lands. -->
