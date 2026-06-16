@@ -1,0 +1,26 @@
+# Twelve-Factor config: every value is overridable by an environment variable with a sane local
+# default, so the same build runs unchanged in dev, docker-compose, and prod.
+spring:
+  application:
+    name: engine
+
+# HTTP port — serves only the actuator health endpoint (the order API is gRPC, below).
+server:
+  port: ${HTTP_PORT:8081}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+engine:
+  grpc:
+    port: ${GRPC_PORT:50051}
+  book:
+    # Default order-book depth returned by GetBook when the request asks for 0 levels.
+    default-depth: ${BOOK_DEFAULT_DEPTH:10}

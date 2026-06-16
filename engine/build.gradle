@@ -1,5 +1,10 @@
 plugins {
     id 'java'
+    id 'org.springframework.boot' version '3.2.5'
+    id 'io.spring.dependency-management' version '1.1.4'
+    // Compiles proto/*.proto to Java + gRPC stubs at build time. The plugin downloads the
+    // protoc compiler and the gRPC codegen plugin from Maven — nothing has to be installed globally.
+    id 'com.google.protobuf' version '0.9.4'
 }
 
 group = 'com.openexchange'
@@ -15,10 +20,56 @@ repositories {
     mavenCentral()
 }
 
+ext {
+    grpcVersion = '1.62.2'
+    protobufVersion = '3.25.3'
+}
+
 dependencies {
+    // Spring Boot: DI, config (env-driven), lifecycle, and an HTTP health endpoint via actuator.
+    implementation 'org.springframework.boot:spring-boot-starter'
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+    // gRPC server (the order API the gateway calls) + protobuf runtime.
+    implementation "io.grpc:grpc-netty-shaded:${grpcVersion}"
+    implementation "io.grpc:grpc-protobuf:${grpcVersion}"
+    implementation "io.grpc:grpc-stub:${grpcVersion}"
+    implementation "com.google.protobuf:protobuf-java:${protobufVersion}"
+    // Required by gRPC-generated stubs for the @Generated annotation under Java 9+.
+    compileOnly 'org.apache.tomcat:annotations-api:6.0.53'
+
     testImplementation platform('org.junit:junit-bom:5.10.2')
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+// The protobuf contract lives at the repo root (proto/) — the single source of truth shared by
+// every service — so we point the plugin there instead of the default src/main/proto.
+sourceSets {
+    main {
+        proto {
+            srcDir '../proto'
+        }
+    }
+}
+
+protobuf {
+    protoc {
+        artifact = "com.google.protobuf:protoc:${protobufVersion}"
+    }
+    plugins {
+        grpc {
+            artifact = "io.grpc:protoc-gen-grpc-java:${grpcVersion}"
+        }
+    }
+    generateProtoTasks {
+        all().each { task ->
+            task.plugins {
+                grpc {}
+            }
+        }
+    }
 }
 
 test {

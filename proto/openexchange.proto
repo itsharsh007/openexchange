@@ -40,7 +40,9 @@ message NewOrder {
   int64 quantity = 7;
 }
 
-message CancelOrder {
+// Named *Request (not CancelOrder) so the message type does not collide with the RPC method
+// name CancelOrder below — protoc rejects a method whose name shadows a message in scope.
+message CancelOrderRequest {
   string order_id = 1;
   string symbol = 2;
   string account_id = 3;
@@ -78,7 +80,7 @@ message BookSnapshot {
 // ── Service ───────────────────────────────────────────────────────────────
 service MatchingEngine {
   rpc SubmitOrder(NewOrder) returns (OrderAck);
-  rpc CancelOrder(CancelOrder) returns (OrderAck);
+  rpc CancelOrder(CancelOrderRequest) returns (OrderAck);
   rpc GetBook(BookRequest) returns (BookSnapshot);
 }
 
