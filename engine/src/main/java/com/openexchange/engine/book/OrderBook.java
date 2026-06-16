@@ -112,15 +112,18 @@ public final class OrderBook {
     }
 
     private Trade makeTrade(Order incoming, Order resting, long priceTicks, long qty) {
-        String buyId = incoming.side() == Side.BUY ? incoming.orderId() : resting.orderId();
-        String sellId = incoming.side() == Side.BUY ? resting.orderId() : incoming.orderId();
+        boolean incomingIsBuy = incoming.side() == Side.BUY;
+        Order buy = incomingIsBuy ? incoming : resting;
+        Order sell = incomingIsBuy ? resting : incoming;
         return new Trade(
                 symbol + "-T" + tradeSeq.incrementAndGet(),
                 symbol,
                 priceTicks,
                 qty,
-                buyId,
-                sellId,
+                buy.orderId(),
+                sell.orderId(),
+                buy.accountId(),
+                sell.accountId(),
                 clock.getAsLong());
     }
 

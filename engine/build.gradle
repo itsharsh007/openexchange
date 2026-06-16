@@ -31,6 +31,12 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
 
+    // Persistence: plain JDBC (explicit SQL for the ledger — easy to reason about and prove
+    // balanced) + Postgres driver + Flyway for versioned, idempotent schema migrations.
+    implementation 'org.springframework.boot:spring-boot-starter-jdbc'
+    implementation 'org.flywaydb:flyway-core'
+    runtimeOnly 'org.postgresql:postgresql'
+
     // gRPC server (the order API the gateway calls) + protobuf runtime.
     implementation "io.grpc:grpc-netty-shaded:${grpcVersion}"
     implementation "io.grpc:grpc-protobuf:${grpcVersion}"

@@ -74,7 +74,29 @@ single writer has processed it, then maps the `MatchResult` back to an `OrderAck
 - `MatchingEngineServiceTest` (3) — drives the real gRPC server over a real client channel:
   resting-buy-then-crossing-sell fill, cancel, and invalid-quantity rejection.
 
+## Double-entry ledger (Postgres)
+Every executed trade is persisted to Postgres as **balanced double-entry postings** before the
+client is acked (`ledger/`). The engine is authoritative for *matching*; the ledger is authoritative
+for *money*. For a trade of `qty` @ `price`:
+
+```
+buyer : CASH -price*qty   buyer : SYMBOL +qty
+seller: CASH +price*qty   seller: SYMBOL -qty
+```
+
+The signed deltas of each asset **sum to zero** — nothing is created or destroyed. Balances are
+*derived* from the entries (the `account_balances` view), never stored directly. Schema is managed
+by **Flyway** (`src/main/resources/db/migration/`), applied automatically on startup. Writes are one
+transaction and idempotent on `trade_id`. Config (env): `DB_URL` / `DB_USER` / `DB_PASSWORD`
+(defaults target `localhost:5432/openexchange`, user `oex`).
+
+Verify after a trade:
+```sql
+SELECT asset, SUM(delta) FROM ledger_entries GROUP BY asset;  -- every row must be 0
+SELECT * FROM account_balances;
+```
+
 ## Still to wire (Phase 1 remainder)
 - Publish `MatchResult.trades()` to the Kafka `trades` topic.
-- Persist a double-entry ledger to Postgres (the ledger must always balance).
 - Throughput benchmark (orders/sec) recorded here.
+- Durable `trade_id` (see `docs/roadmap.md` → Known limitations).

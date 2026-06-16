@@ -3,6 +3,16 @@
 spring:
   application:
     name: engine
+  datasource:
+    # Twelve-Factor: connection comes entirely from the environment. Defaults target the local
+    # Postgres (native or docker-compose) with the oex/oex/openexchange credentials.
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/openexchange}
+    username: ${DB_USER:oex}
+    password: ${DB_PASSWORD:oex}
+  flyway:
+    # Versioned, idempotent schema migrations run automatically on startup.
+    enabled: true
+    locations: classpath:db/migration
 
 # HTTP port — serves only the actuator health endpoint (the order API is gRPC, below).
 server:

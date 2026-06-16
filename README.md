@@ -8,6 +8,9 @@ that predicts short-term price moves and flags anomalous / risky order flow.
 > ⚠️ **Simulation only.** OpenExchange uses *play money* and fake symbols. It is not a real
 > exchange, handles no funds, and is not investment advice.
 
+> 🧒 New here? Read [**OpenExchange explained like you're 10**](docs/explain-like-im-10.md) for the
+> no-jargon version before diving into the architecture.
+
 ## Why this project
 
 It's built to exercise — and let me explain at length — the full surface of modern backend

@@ -13,6 +13,13 @@ leaves room for — not rewrites.
 - [ ] Phase 4 — React dashboard
 - [ ] Phase 5 — Infra, observability, deploy
 
+## Known limitations (to harden)
+- **`trade_id` is an in-memory per-symbol sequence** (`AAPL-T1`, `AAPL-T2`, …) that resets when the
+  engine restarts, so it is not durably unique across restarts. The ledger insert is idempotent on
+  `trade_id`, which means after a restart the first new trade could collide with an old row and be
+  skipped. Proper fix: derive engine state by **replaying the event log** (Kafka + ledger) on
+  startup so sequences continue, or switch `trade_id` to a UUID. Tracked for the Kafka phase.
+
 ## Going public (later)
 - [ ] **User signup + isolated accounts** — each visitor gets an independent play-money wallet.
 - [ ] **Per-user sandbox / reset** — fresh demo balance; can't affect others.

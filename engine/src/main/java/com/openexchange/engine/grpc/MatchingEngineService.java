@@ -3,7 +3,9 @@ package com.openexchange.engine.grpc;
 import com.openexchange.engine.MatchingEngine;
 import com.openexchange.engine.book.MatchResult;
 import com.openexchange.engine.book.OrderBook;
+import com.openexchange.engine.ledger.TradeLedger;
 import com.openexchange.engine.model.Order;
+import com.openexchange.engine.model.Trade;
 import com.openexchange.proto.BookRequest;
 import com.openexchange.proto.BookSnapshot;
 import com.openexchange.proto.CancelOrderRequest;
@@ -35,11 +37,15 @@ public class MatchingEngineService extends MatchingEngineGrpc.MatchingEngineImpl
     private static final Logger log = LoggerFactory.getLogger(MatchingEngineService.class);
 
     private final MatchingEngine engine;
+    private final TradeLedger ledger;
     private final int defaultDepth;
 
     public MatchingEngineService(
-            MatchingEngine engine, @Value("${engine.book.default-depth}") int defaultDepth) {
+            MatchingEngine engine,
+            TradeLedger ledger,
+            @Value("${engine.book.default-depth}") int defaultDepth) {
         this.engine = engine;
+        this.ledger = ledger;
         this.defaultDepth = defaultDepth;
     }
 
@@ -64,6 +70,14 @@ public class MatchingEngineService extends MatchingEngineGrpc.MatchingEngineImpl
             // .get() blocks this RPC thread until the symbol's single writer has processed the order.
             MatchResult result = engine.submit(order).get();
 
+            // Persist the money side BEFORE acking the client: a "filled" response must mean the
+            // double-entry ledger already recorded it durably. Each record() is its own transaction
+            // and idempotent on trade_id.
+            for (Trade trade : result.trades()) {
+                ledger.record(trade);
+            }
+            // TODO(phase-1): also publish result.trades() to the Kafka `trades` topic here.
+
             responseObserver.onNext(
                     OrderAck.newBuilder()
                             .setOrderId(result.orderId())
@@ -71,8 +85,6 @@ public class MatchingEngineService extends MatchingEngineGrpc.MatchingEngineImpl
                             .setFilledQuantity(result.filledQuantity())
                             .build());
             responseObserver.onCompleted();
-            // TODO(phase-1): publish result.trades() to the Kafka `trades` topic and persist the
-            // double-entry ledger rows here, on this side of the single-writer boundary.
         } catch (IllegalArgumentException e) {
             // Bad input (non-positive qty/price, etc.) — reject rather than crash the stream.
             responseObserver.onError(

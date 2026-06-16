@@ -13,4 +13,6 @@ public record Trade(
         long quantity,
         String buyOrderId,
         String sellOrderId,
+        String buyAccountId, // account on the buy side — needed to post the double-entry ledger
+        String sellAccountId, // account on the sell side
         long tsMillis) {}
