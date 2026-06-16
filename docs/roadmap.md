@@ -19,6 +19,10 @@ leaves room for — not rewrites.
   `trade_id`, which means after a restart the first new trade could collide with an old row and be
   skipped. Proper fix: derive engine state by **replaying the event log** (Kafka + ledger) on
   startup so sequences continue, or switch `trade_id` to a UUID. Tracked for the Kafka phase.
+- **Trade publish is best-effort** (after the ledger commit), so the `trades` topic can miss an event
+  during a broker outage even though the ledger has it. Durable fix: transactional outbox — see
+  [`adr/0003-trade-event-streaming.md`](adr/0003-trade-event-streaming.md). The outbox row also
+  carries a stable id, which subsumes the `trade_id` limitation above.
 
 ## Going public (later)
 - [ ] **User signup + isolated accounts** — each visitor gets an independent play-money wallet.

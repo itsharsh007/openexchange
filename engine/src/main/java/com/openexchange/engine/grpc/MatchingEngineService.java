@@ -6,6 +6,7 @@ import com.openexchange.engine.book.OrderBook;
 import com.openexchange.engine.ledger.TradeLedger;
 import com.openexchange.engine.model.Order;
 import com.openexchange.engine.model.Trade;
+import com.openexchange.engine.stream.TradePublisher;
 import com.openexchange.proto.BookRequest;
 import com.openexchange.proto.BookSnapshot;
 import com.openexchange.proto.CancelOrderRequest;
@@ -38,14 +39,17 @@ public class MatchingEngineService extends MatchingEngineGrpc.MatchingEngineImpl
 
     private final MatchingEngine engine;
     private final TradeLedger ledger;
+    private final TradePublisher publisher;
     private final int defaultDepth;
 
     public MatchingEngineService(
             MatchingEngine engine,
             TradeLedger ledger,
+            TradePublisher publisher,
             @Value("${engine.book.default-depth}") int defaultDepth) {
         this.engine = engine;
         this.ledger = ledger;
+        this.publisher = publisher;
         this.defaultDepth = defaultDepth;
     }
 
@@ -76,7 +80,12 @@ public class MatchingEngineService extends MatchingEngineGrpc.MatchingEngineImpl
             for (Trade trade : result.trades()) {
                 ledger.record(trade);
             }
-            // TODO(phase-1): also publish result.trades() to the Kafka `trades` topic here.
+            // Then fan the trades out to the event stream for the tape and the risk service. This is
+            // best-effort and runs only after the durable ledger write above, so a broker outage can
+            // never lose money — at worst the tape misses an event (see TradePublisher's contract).
+            for (Trade trade : result.trades()) {
+                publisher.publish(trade);
+            }
 
             responseObserver.onNext(
                     OrderAck.newBuilder()

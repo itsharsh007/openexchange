@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openexchange.engine.MatchingEngine;
 import com.openexchange.engine.ledger.TradeLedger;
+import com.openexchange.engine.stream.TradePublisher;
 import com.openexchange.proto.BookRequest;
 import com.openexchange.proto.BookSnapshot;
 import com.openexchange.proto.CancelOrderRequest;
@@ -40,7 +41,9 @@ class MatchingEngineServiceTest {
         engine = new MatchingEngine();
         server =
                 ServerBuilder.forPort(0)
-                        .addService(new MatchingEngineService(engine, TradeLedger.NOOP, 10))
+                        .addService(
+                                new MatchingEngineService(
+                                        engine, TradeLedger.NOOP, TradePublisher.NOOP, 10))
                         .build()
                         .start();
         channel = ManagedChannelBuilder.forAddress("localhost", server.getPort()).usePlaintext().build();

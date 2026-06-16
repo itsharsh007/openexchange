@@ -13,6 +13,16 @@ spring:
     # Versioned, idempotent schema migrations run automatically on startup.
     enabled: true
     locations: classpath:db/migration
+  kafka:
+    # Producer connects lazily on first send, so the engine boots fine without a broker.
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.ByteArraySerializer
+      # acks=all + idempotent producer: no duplicate or lost records on retry to the broker.
+      acks: all
+      properties:
+        enable.idempotence: true
 
 # HTTP port — serves only the actuator health endpoint (the order API is gRPC, below).
 server:
@@ -34,3 +44,6 @@ engine:
   book:
     # Default order-book depth returned by GetBook when the request asks for 0 levels.
     default-depth: ${BOOK_DEFAULT_DEPTH:10}
+  kafka:
+    # Topic the engine publishes executed trades to (consumed by the gateway tape + risk service).
+    trades-topic: ${TRADES_TOPIC:trades}

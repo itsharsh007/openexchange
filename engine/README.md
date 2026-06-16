@@ -73,6 +73,8 @@ single writer has processed it, then maps the `MatchResult` back to an `OrderAck
   conservation under concurrency.
 - `MatchingEngineServiceTest` (3) — drives the real gRPC server over a real client channel:
   resting-buy-then-crossing-sell fill, cancel, and invalid-quantity rejection.
+- `KafkaTradePublisherTest` (1) — publishes a trade to an in-JVM broker and consumes it back,
+  asserting the protobuf round-trips and the record is keyed by symbol.
 
 ## Double-entry ledger (Postgres)
 Every executed trade is persisted to Postgres as **balanced double-entry postings** before the
@@ -96,7 +98,21 @@ SELECT asset, SUM(delta) FROM ledger_entries GROUP BY asset;  -- every row must 
 SELECT * FROM account_balances;
 ```
 
+## Trade event stream (Kafka)
+After a trade is durably in the ledger, the engine publishes it to the Kafka **`trades`** topic
+(`stream/`), where the gateway's trade tape and the Python risk service consume it. The wire format
+is the shared protobuf `Trade` message, **keyed by symbol** (so a symbol's trades stay on one
+partition, strictly ordered). The producer runs `acks=all` + idempotence.
+
+Publishing is **best-effort and happens after the ledger write** — the ledger is the source of truth
+for money, so a broker outage costs the tape an event, never the books. Abstracted behind
+`TradePublisher` (with a `NOOP` for tests). See **ADR 0003** for the semantics and the durable
+upgrade path (transactional outbox). Config (env): `KAFKA_BOOTSTRAP` (default `localhost:9092`),
+`TRADES_TOPIC` (default `trades`).
+
+The publish path is verified by `KafkaTradePublisherTest`, which runs a real broker **in-JVM**
+(`@EmbeddedKafka`) — no containers needed.
+
 ## Still to wire (Phase 1 remainder)
-- Publish `MatchResult.trades()` to the Kafka `trades` topic.
 - Throughput benchmark (orders/sec) recorded here.
-- Durable `trade_id` (see `docs/roadmap.md` → Known limitations).
+- Durable `trade_id` (see `docs/roadmap.md` → Known limitations; subsumed by the ADR 0003 outbox).

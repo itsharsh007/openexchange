@@ -507,14 +507,18 @@ func (x *OrderAck) GetReason() string {
 }
 
 type Trade struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	TradeId       string                 `protobuf:"bytes,1,opt,name=trade_id,json=tradeId,proto3" json:"trade_id,omitempty"`
-	Symbol        string                 `protobuf:"bytes,2,opt,name=symbol,proto3" json:"symbol,omitempty"`
-	PriceTicks    int64                  `protobuf:"varint,3,opt,name=price_ticks,json=priceTicks,proto3" json:"price_ticks,omitempty"`
-	Quantity      int64                  `protobuf:"varint,4,opt,name=quantity,proto3" json:"quantity,omitempty"`
-	BuyOrderId    string                 `protobuf:"bytes,5,opt,name=buy_order_id,json=buyOrderId,proto3" json:"buy_order_id,omitempty"`
-	SellOrderId   string                 `protobuf:"bytes,6,opt,name=sell_order_id,json=sellOrderId,proto3" json:"sell_order_id,omitempty"`
-	TsMillis      int64                  `protobuf:"varint,7,opt,name=ts_millis,json=tsMillis,proto3" json:"ts_millis,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	TradeId     string                 `protobuf:"bytes,1,opt,name=trade_id,json=tradeId,proto3" json:"trade_id,omitempty"`
+	Symbol      string                 `protobuf:"bytes,2,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	PriceTicks  int64                  `protobuf:"varint,3,opt,name=price_ticks,json=priceTicks,proto3" json:"price_ticks,omitempty"`
+	Quantity    int64                  `protobuf:"varint,4,opt,name=quantity,proto3" json:"quantity,omitempty"`
+	BuyOrderId  string                 `protobuf:"bytes,5,opt,name=buy_order_id,json=buyOrderId,proto3" json:"buy_order_id,omitempty"`
+	SellOrderId string                 `protobuf:"bytes,6,opt,name=sell_order_id,json=sellOrderId,proto3" json:"sell_order_id,omitempty"`
+	TsMillis    int64                  `protobuf:"varint,7,opt,name=ts_millis,json=tsMillis,proto3" json:"ts_millis,omitempty"`
+	// Account ids on each side: not needed for the trade tape, but the risk service keys
+	// per-account exposure/anomaly scoring on them. Carried on the `trades` topic event.
+	BuyAccountId  string `protobuf:"bytes,8,opt,name=buy_account_id,json=buyAccountId,proto3" json:"buy_account_id,omitempty"`
+	SellAccountId string `protobuf:"bytes,9,opt,name=sell_account_id,json=sellAccountId,proto3" json:"sell_account_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -596,6 +600,20 @@ func (x *Trade) GetTsMillis() int64 {
 		return x.TsMillis
 	}
 	return 0
+}
+
+func (x *Trade) GetBuyAccountId() string {
+	if x != nil {
+		return x.BuyAccountId
+	}
+	return ""
+}
+
+func (x *Trade) GetSellAccountId() string {
+	if x != nil {
+		return x.SellAccountId
+	}
+	return ""
 }
 
 type PriceLevel struct {
@@ -886,7 +904,7 @@ const file_openexchange_proto_rawDesc = "" +
 	"\border_id\x18\x01 \x01(\tR\aorderId\x124\n" +
 	"\x06status\x18\x02 \x01(\x0e2\x1c.openexchange.v1.OrderStatusR\x06status\x12'\n" +
 	"\x0ffilled_quantity\x18\x03 \x01(\x03R\x0efilledQuantity\x12\x16\n" +
-	"\x06reason\x18\x04 \x01(\tR\x06reason\"\xda\x01\n" +
+	"\x06reason\x18\x04 \x01(\tR\x06reason\"\xa8\x02\n" +
 	"\x05Trade\x12\x19\n" +
 	"\btrade_id\x18\x01 \x01(\tR\atradeId\x12\x16\n" +
 	"\x06symbol\x18\x02 \x01(\tR\x06symbol\x12\x1f\n" +
@@ -896,7 +914,9 @@ const file_openexchange_proto_rawDesc = "" +
 	"\fbuy_order_id\x18\x05 \x01(\tR\n" +
 	"buyOrderId\x12\"\n" +
 	"\rsell_order_id\x18\x06 \x01(\tR\vsellOrderId\x12\x1b\n" +
-	"\tts_millis\x18\a \x01(\x03R\btsMillis\"I\n" +
+	"\tts_millis\x18\a \x01(\x03R\btsMillis\x12$\n" +
+	"\x0ebuy_account_id\x18\b \x01(\tR\fbuyAccountId\x12&\n" +
+	"\x0fsell_account_id\x18\t \x01(\tR\rsellAccountId\"I\n" +
 	"\n" +
 	"PriceLevel\x12\x1f\n" +
 	"\vprice_ticks\x18\x01 \x01(\x03R\n" +

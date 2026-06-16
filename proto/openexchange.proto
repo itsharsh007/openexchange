@@ -63,6 +63,10 @@ message Trade {
   string buy_order_id = 5;
   string sell_order_id = 6;
   int64 ts_millis = 7;
+  // Account ids on each side: not needed for the trade tape, but the risk service keys
+  // per-account exposure/anomaly scoring on them. Carried on the `trades` topic event.
+  string buy_account_id = 8;
+  string sell_account_id = 9;
 }
 
 message PriceLevel {

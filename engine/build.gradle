@@ -37,6 +37,11 @@ dependencies {
     implementation 'org.flywaydb:flyway-core'
     runtimeOnly 'org.postgresql:postgresql'
 
+    // Event streaming: the engine publishes each executed trade to the Kafka `trades` topic
+    // (consumed by the gateway's trade tape and the Python risk service). Spring for Apache Kafka
+    // gives us a KafkaTemplate producer that connects lazily, so the engine boots without a broker.
+    implementation 'org.springframework.kafka:spring-kafka'
+
     // gRPC server (the order API the gateway calls) + protobuf runtime.
     implementation "io.grpc:grpc-netty-shaded:${grpcVersion}"
     implementation "io.grpc:grpc-protobuf:${grpcVersion}"
@@ -48,6 +53,8 @@ dependencies {
     testImplementation platform('org.junit:junit-bom:5.10.2')
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    // In-JVM Kafka broker so the trade-publish path is verified end-to-end without containers.
+    testImplementation 'org.springframework.kafka:spring-kafka-test'
 }
 
 // The protobuf contract lives at the repo root (proto/) — the single source of truth shared by
