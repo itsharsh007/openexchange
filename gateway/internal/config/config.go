@@ -55,7 +55,7 @@ func Load() (*Config, []string) {
 
 	cfg := &Config{
 		ListenAddr:         ":" + port,
-		EngineGRPCAddr:     getenv("ENGINE_GRPC_ADDR", "localhost:9090"),
+		EngineGRPCAddr:     getenv("ENGINE_GRPC_ADDR", "localhost:50051"),
 		RedisAddr:          getenv("REDIS_ADDR", "localhost:6379"),
 		JWTSecret:          jwtSecret,
 		RateLimitPerSecond: getenvFloat("RATE_LIMIT_RPS", 20),

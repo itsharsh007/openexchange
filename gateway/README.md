@@ -32,8 +32,8 @@ React dashboard ──REST + WS──> [ gateway ] ──gRPC──> Java matchi
 1. **REST**: submit/cancel orders, fetch an order-book snapshot, health check.
 2. **WebSocket**: a fan-out hub broadcasting live trades + book updates to every
    connected client.
-3. **gRPC client** to the matching engine (currently a deterministic mock; see
-   below for the real-client swap).
+3. **gRPC client** to the Java matching engine (real adapter in
+   `internal/engine/grpc_client.go`; a `MockClient` remains for tests).
 4. **Middleware**: per-client token-bucket rate limiting + JWT bearer auth.
 5. **Redis** caching of top-of-book, degrading gracefully when Redis is down.
 
@@ -42,7 +42,8 @@ React dashboard ──REST + WS──> [ gateway ] ──gRPC──> Java matchi
 cmd/gateway/main.go          # boot, wiring, graceful shutdown
 internal/config/             # env-var config (Twelve-Factor)
 internal/engine/             # EngineClient interface, Go domain types (mirror proto),
-                             #   MockClient, and the grpc_client.go swap-in guide
+                             #   real GRPCClient adapter + MockClient (tests)
+genproto/                    # generated protobuf/gRPC stubs (make proto)
 internal/middleware/         # ratelimit.go (token bucket), auth.go (JWT)
 internal/cache/              # Redis wrapper with graceful degradation
 internal/ws/                 # WebSocket fan-out hub (register/unregister/broadcast)
@@ -50,8 +51,8 @@ internal/api/                # HTTP handlers + routing
 ```
 **Design principle — dependency inversion:** handlers depend on the small
 `engine.EngineClient` interface, never on gRPC directly. That keeps the gateway
-`go build`-able with no `protoc` dependency today, lets us unit-test against a
-mock, and makes swapping in the real client a one-line change in `main.go`.
+unit-testable against a `MockClient`, and meant the real gRPC client dropped in
+as a one-line change in `main.go` with zero handler changes.
 
 ## Configuration
 All config comes from environment variables (Twelve-Factor). Sane defaults let
@@ -60,7 +61,7 @@ it boot with zero config in dev.
 | Env var | Default | Meaning |
 |---|---|---|
 | `PORT` | `8080` | HTTP listen port |
-| `ENGINE_GRPC_ADDR` | `localhost:9090` | Java engine gRPC address |
+| `ENGINE_GRPC_ADDR` | `localhost:50051` | Java engine gRPC address |
 | `REDIS_ADDR` | `localhost:6379` | Redis endpoint |
 | `JWT_SECRET` | `dev-only-change-me` | HMAC secret for bearer tokens (warns on default) |
 | `RATE_LIMIT_RPS` | `20` | Sustained tokens/sec per client |
@@ -105,10 +106,11 @@ curl -s -X POST localhost:8080/orders \
   -d '{"client_order_id":"c-1","symbol":"ACME","side":"BUY","type":"LIMIT","price_ticks":10000,"quantity":5}'
 ```
 ```json
-{"order_id":"ord-1","status":"ACCEPTED","filled_quantity":0}
+{"order_id":"o1","status":"ACCEPTED","filled_quantity":0}
 ```
-A MARKET order returns `{"status":"FILLED", ...}` (mock) and triggers a WS trade
-broadcast. Rejections return HTTP 422 with a `reason`.
+The `order_id` is assigned by the engine. A crossing order returns
+`{"status":"FILLED", ...}` and (once wired) triggers a WS trade broadcast.
+Rejections return HTTP 422 with a `reason`.
 
 ### `DELETE /orders/{id}` — cancel
 ```bash
@@ -184,16 +186,28 @@ reports a miss and `SetBook` is a no-op, so the gateway falls back to the engine
 A Redis outage degrades latency, not availability. `/healthz` reports current
 Redis reachability without ever failing.
 
-## Swapping in the real gRPC client
-The gateway ships with `engine.MockClient` so the whole system runs before the
-`protoc` stubs exist. To use the real engine, follow the fully-worked guide in
-[`internal/engine/grpc_client.go`](internal/engine/grpc_client.go):
-1. Reconcile the `go_package` in `proto/openexchange.proto` with this module path
-   (`github.com/itsharsh007/...`) and generate the stubs with `protoc`.
-2. `go get google.golang.org/grpc google.golang.org/protobuf`.
-3. Implement the `GRPCClient` adapter (translates our Go types ↔ protobuf).
-4. In `cmd/gateway/main.go` replace `engine.NewMockClient()` with
-   `engine.NewGRPCClient(cfg.EngineGRPCAddr)`. No handler code changes.
+## Engine gRPC client
+`main.go` uses the real `engine.GRPCClient` (`internal/engine/grpc_client.go`),
+which dials `ENGINE_GRPC_ADDR` and translates our plain Go types ↔ the protobuf
+structs in `genproto/`. `grpc.NewClient` is lazy, so the gateway boots even if
+the engine is briefly down; each RPC carries a `ENGINE_TIMEOUT` deadline.
+
+Regenerate the Go stubs after any change to `proto/openexchange.proto`:
+```bash
+make proto      # from the repo root
+```
+`engine.MockClient` is kept for tests and offline UI work — wire it in `main.go`
+instead of `NewGRPCClient` to run the gateway without a live engine.
+
+### Verified end-to-end
+With the engine on `:50051` and the gateway on `:8080`, a resting BUY then a
+crossing SELL produced a real fill from the Java engine (`order_id` `o1`/`o2`):
+```
+POST /orders BUY  15000x10 -> {"order_id":"o1","status":"ACCEPTED"}
+GET  /book/AAPL            -> bids:[{15000,10}] asks:[]
+POST /orders SELL 15000x10 -> {"order_id":"o2","status":"FILLED","filled_quantity":10}
+GET  /book/AAPL            -> bids:[] asks:[]
+```
 
 ## Docker
 Multi-stage build → a static binary on a distroless `nonroot` base.

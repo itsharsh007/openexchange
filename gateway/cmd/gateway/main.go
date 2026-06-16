@@ -37,10 +37,15 @@ func main() {
 	}
 	log.Printf("config %s", cfg)
 
-	// Engine client. TODO: replace with engine.NewGRPCClient(cfg.EngineGRPCAddr)
-	// once protoc stubs are generated. See internal/engine/grpc_client.go.
-	eng := engine.NewMockClient()
-	log.Printf("engine: using MOCK client (target gRPC addr=%s)", cfg.EngineGRPCAddr)
+	// Engine client: real gRPC adapter to the Java matching engine. grpc.NewClient
+	// is lazy, so this does not block on a live engine — each RPC carries a
+	// per-call deadline (cfg.EngineTimeout) enforced by the handlers.
+	eng, err := engine.NewGRPCClient(cfg.EngineGRPCAddr)
+	if err != nil {
+		log.Fatalf("engine: failed to create gRPC client for %s: %v", cfg.EngineGRPCAddr, err)
+	}
+	defer eng.Close()
+	log.Printf("engine: gRPC client -> %s", cfg.EngineGRPCAddr)
 
 	// Redis — non-fatal if unavailable.
 	ctx := context.Background()
