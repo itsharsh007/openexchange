@@ -142,9 +142,20 @@ warning and disables itself — the API keeps serving.
 - **As a background thread** (default): started automatically on FastAPI startup.
 - **As a standalone process:** `python -m app.kafka_consumer`.
 
-Expected message shapes (JSON):
-- `trades`: `{symbol, price_ticks, quantity, buy_account_id?, sell_account_id?}`
-- `orders`: `{account_id, symbol, quantity, ts_millis, is_cancel?}`
+Wire formats per topic:
+- `trades`: the engine publishes the **protobuf `Trade`** message (the shared `proto/` contract),
+  decoded via the generated stub in `app/genproto/` (`Trade.FromString`). Fields used:
+  `symbol, price_ticks, quantity, buy_account_id, sell_account_id`.
+- `orders`: **JSON** `{account_id, symbol, quantity, ts_millis, is_cancel?}` — no producer exists
+  yet, so this stays tolerant JSON until one does.
+
+The stub import is **lazy** (inside the decode path), so `import app.kafka_consumer` still works on a
+bare box with no `protobuf` runtime — consistent with the service's import-safety rule. Regenerate
+the stub after any `proto/` change:
+
+```bash
+make proto-python        # -> risk/app/genproto/openexchange_pb2.py  (needs protoc + `pip install protobuf`)
+```
 
 ---
 
