@@ -1,0 +1,79 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  border-radius: 6px;
+  transition: box-shadow 0.2s ease;
+}
+.alert {
+  box-shadow: 0 0 0 2px var(--down) inset;
+}
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.header h2 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+.badge {
+  background: var(--down);
+  color: #1a0606;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 3px;
+  letter-spacing: 0.05em;
+}
+.block {
+  margin-top: 10px;
+}
+.label {
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 3px;
+}
+.predRow {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 0.85rem;
+  margin-bottom: 4px;
+}
+.dir {
+  font-weight: 700;
+}
+.predPrice {
+  font-variant-numeric: tabular-nums;
+}
+.barTrack {
+  height: 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.barFill {
+  height: 100%;
+}
+.infoFill {
+  background: var(--accent);
+}
+.warnFill {
+  background: var(--down);
+}
+.up {
+  color: var(--up);
+}
+.down {
+  color: var(--down);
+}
+.flat {
+  color: var(--muted);
+}
+.muted {
+  color: var(--muted);
+  font-size: 0.75rem;
+}

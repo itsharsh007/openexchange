@@ -1,0 +1,40 @@
+/* Global stylesheet + design tokens. A single dark theme keeps it minimal;
+   per-component styling lives in *.module.css files (scoped, no collisions). */
+:root {
+  --bg: #0d1117;
+  --panel: #161b22;
+  --border: #2a313c;
+  --text: #e6edf3;
+  --muted: #8b949e;
+  --accent: #58a6ff;
+  --up: #3fb950; /* bids / buys / positive P&L */
+  --down: #f85149; /* asks / sells / negative P&L */
+  --warn: #d29922;
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+}
+
+h1,
+h2,
+h3 {
+  font-weight: 600;
+}

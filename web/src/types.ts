@@ -1,0 +1,166 @@
+// TypeScript mirror of proto/openexchange.proto (package openexchange.v1).
+//
+// These are the wire shapes the Go gateway sends/accepts. We use string-literal
+// unions instead of numeric proto enums because the gateway serializes JSON for
+// the browser (proto enum *names*, not their integer values). If the gateway
+// ever sends raw proto over the wire we'd decode to these same shapes.
+//
+// IMPORTANT: all `*Ticks` fields are integer ticks (1 tick = 1 cent). Divide by
+// TICKS_PER_UNIT (config.ts) before showing a human price. Never do price math
+// in floats — keep it in ticks until the very last formatting step.
+
+// ── Enums (proto enum names) ────────────────────────────────────────────────
+export type Side = "BUY" | "SELL";
+export type OrderType = "LIMIT" | "MARKET";
+export type OrderStatus =
+  | "ACCEPTED"
+  | "PARTIALLY_FILLED"
+  | "FILLED"
+  | "CANCELLED"
+  | "REJECTED";
+
+// ── Core messages (proto) ───────────────────────────────────────────────────
+
+/** proto: NewOrder — submitted via REST POST /orders. */
+export interface NewOrder {
+  clientOrderId: string; // idempotency key the client generates
+  accountId: string;
+  symbol: string;
+  side: Side;
+  type: OrderType;
+  priceTicks: number; // ignored by the engine for MARKET orders
+  quantity: number;
+}
+
+/** proto: CancelOrder — submitted via REST DELETE /orders/:id. */
+export interface CancelOrder {
+  orderId: string;
+  symbol: string;
+  accountId: string;
+}
+
+/** proto: OrderAck — REST response to submit/cancel. */
+export interface OrderAck {
+  orderId: string;
+  status: OrderStatus;
+  filledQuantity: number;
+  reason: string; // populated when status === "REJECTED"
+}
+
+/** proto: Trade — one matched fill. */
+export interface Trade {
+  tradeId: string;
+  symbol: string;
+  priceTicks: number;
+  quantity: number;
+  buyOrderId: string;
+  sellOrderId: string;
+  tsMillis: number;
+}
+
+/** proto: PriceLevel — aggregated resting quantity at one price. */
+export interface PriceLevel {
+  priceTicks: number;
+  quantity: number;
+}
+
+/** proto: BookSnapshot — bids best-first (highest), asks best-first (lowest). */
+export interface BookSnapshot {
+  symbol: string;
+  bids: PriceLevel[];
+  asks: PriceLevel[];
+  tsMillis: number;
+}
+
+/** proto: BookRequest — query params for GET /book. */
+export interface BookRequest {
+  symbol: string;
+  depth: number;
+}
+
+// ── Risk / ML signals ────────────────────────────────────────────────────────
+// NOTE: these are NOT yet in proto/openexchange.proto. The Python risk service
+// publishes to the `risk-signals` Kafka topic and the gateway fans them out on
+// the WS. This is the contract the dashboard expects; when proto gains a
+// RiskSignal message, mirror it here and keep the field names aligned.
+export type RiskDirection = "UP" | "DOWN" | "FLAT";
+
+export interface RiskSignal {
+  symbol: string;
+  tsMillis: number;
+  /** Short-horizon next-tick direction prediction. */
+  predictedDirection: RiskDirection;
+  /** Model confidence in [0, 1]. */
+  confidence: number;
+  /** Predicted next mid price, in ticks. */
+  predictedPriceTicks: number;
+  /** Anomaly/fraud score in [0, 1]; higher = more anomalous. */
+  anomalyScore: number;
+  /** True when anomalyScore crosses the service's alert threshold. */
+  anomalyFlag: boolean;
+  /** Per-account exposure score in [0, 1] against configured limits. */
+  riskScore: number;
+}
+
+// ── WebSocket envelope ────────────────────────────────────────────────────────
+// The gateway multiplexes several message kinds over one socket. Each frame is
+// JSON: { "type": <kind>, "data": <payload> }. A discriminated union lets the
+// hook narrow `data` by `type` with full type safety (see useWebSocket.ts).
+export type ServerMessage =
+  | { type: "trade"; data: Trade }
+  | { type: "book"; data: BookSnapshot }
+  | { type: "risk"; data: RiskSignal }
+  | { type: "ack"; data: OrderAck };
+
+// Client → server control frames (subscription management).
+export interface SubscribeMessage {
+  type: "subscribe";
+  channels: WsChannel[];
+  symbol: string;
+}
+export interface UnsubscribeMessage {
+  type: "unsubscribe";
+  channels: WsChannel[];
+  symbol: string;
+}
+export type ClientMessage = SubscribeMessage | UnsubscribeMessage;
+
+export type WsChannel = "trades" | "book" | "risk";
+
+// ── UI-local types (not on the wire) ──────────────────────────────────────────
+
+/** Connection lifecycle, surfaced in the header so the user sees link health. */
+export type ConnectionState =
+  | "connecting"
+  | "open"
+  | "reconnecting"
+  | "closed";
+
+/** An order the UI is tracking locally (optimistic + reconciled). */
+export interface TrackedOrder {
+  clientOrderId: string;
+  orderId?: string; // assigned by the engine on ack
+  symbol: string;
+  side: Side;
+  type: OrderType;
+  priceTicks: number;
+  quantity: number;
+  filledQuantity: number;
+  status: OrderStatus | "PENDING"; // PENDING = optimistic, not yet acked
+  createdAt: number;
+}
+
+/** Mock account snapshot for AccountPanel (typed; real data comes later). */
+export interface AccountSnapshot {
+  accountId: string;
+  cashTicks: number; // available cash, in ticks
+  realizedPnlTicks: number;
+  unrealizedPnlTicks: number;
+  positions: Position[];
+}
+
+export interface Position {
+  symbol: string;
+  quantity: number; // signed: positive long, negative short
+  avgPriceTicks: number;
+}

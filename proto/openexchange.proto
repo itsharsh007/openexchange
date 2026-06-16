@@ -1,0 +1,114 @@
+syntax = "proto3";
+
+package openexchange.v1;
+
+option go_package = "github.com/itsharsh007/openexchange/gateway/genproto;oepb";
+option java_package = "com.openexchange.proto";
+option java_multiple_files = true;
+
+// ── Enums ──────────────────────────────────────────────────────────────────
+enum Side {
+  SIDE_UNSPECIFIED = 0;
+  BUY = 1;
+  SELL = 2;
+}
+
+enum OrderType {
+  ORDER_TYPE_UNSPECIFIED = 0;
+  LIMIT = 1;
+  MARKET = 2;
+}
+
+enum OrderStatus {
+  ORDER_STATUS_UNSPECIFIED = 0;
+  ACCEPTED = 1;
+  PARTIALLY_FILLED = 2;
+  FILLED = 3;
+  CANCELLED = 4;
+  REJECTED = 5;
+}
+
+// ── Core messages ────────────────────────────────────────────────────────────
+// Prices are integer ticks (e.g. cents) to avoid floating-point money bugs.
+message NewOrder {
+  string client_order_id = 1; // idempotency key supplied by the client
+  string account_id = 2;
+  string symbol = 3;
+  Side side = 4;
+  OrderType type = 5;
+  int64 price_ticks = 6; // ignored for MARKET orders
+  int64 quantity = 7;
+}
+
+message CancelOrder {
+  string order_id = 1;
+  string symbol = 2;
+  string account_id = 3;
+}
+
+message OrderAck {
+  string order_id = 1;
+  OrderStatus status = 2;
+  int64 filled_quantity = 3;
+  string reason = 4; // populated on REJECTED
+}
+
+message Trade {
+  string trade_id = 1;
+  string symbol = 2;
+  int64 price_ticks = 3;
+  int64 quantity = 4;
+  string buy_order_id = 5;
+  string sell_order_id = 6;
+  int64 ts_millis = 7;
+}
+
+message PriceLevel {
+  int64 price_ticks = 1;
+  int64 quantity = 2;
+}
+
+message BookSnapshot {
+  string symbol = 1;
+  repeated PriceLevel bids = 2; // best first (highest price)
+  repeated PriceLevel asks = 3; // best first (lowest price)
+  int64 ts_millis = 4;
+}
+
+// ── Service ───────────────────────────────────────────────────────────────
+service MatchingEngine {
+  rpc SubmitOrder(NewOrder) returns (OrderAck);
+  rpc CancelOrder(CancelOrder) returns (OrderAck);
+  rpc GetBook(BookRequest) returns (BookSnapshot);
+}
+
+message BookRequest {
+  string symbol = 1;
+  int32 depth = 2;
+}
+
+// ── Risk / ML signals ────────────────────────────────────────────────────────
+// Published by the Python risk service to the `risk-signals` topic and surfaced
+// in the dashboard's RiskPanel. The gateway may reject orders on a REJECT action.
+enum SignalKind {
+  SIGNAL_KIND_UNSPECIFIED = 0;
+  ANOMALY = 1;      // unusual order pattern (isolation forest)
+  RISK_EXPOSURE = 2; // account exposure vs limits
+  PRICE_PREDICTION = 3; // short-horizon price-direction forecast
+}
+
+enum SignalAction {
+  SIGNAL_ACTION_UNSPECIFIED = 0;
+  ALLOW = 1;
+  REJECT = 2;
+}
+
+message RiskSignal {
+  SignalKind kind = 1;
+  string account_id = 2;
+  string symbol = 3;       // optional; empty for account-level signals
+  double score = 4;        // 0..1 (anomaly/risk) or prob_up (prediction)
+  SignalAction action = 5; // recommendation to the gateway
+  string reason = 6;       // human-readable explanation
+  int64 ts_millis = 7;
+}

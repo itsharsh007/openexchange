@@ -1,0 +1,75 @@
+.book {
+  display: flex;
+  flex-direction: column;
+  font-variant-numeric: tabular-nums; /* digits don't jitter as values change */
+}
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.header h2 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+.symbol {
+  font-weight: 600;
+  color: var(--accent);
+}
+.colHead,
+.row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 4px;
+  font-size: 0.8rem;
+  padding: 1px 6px;
+}
+.colHead {
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  margin: 6px 0 2px;
+}
+.row {
+  position: relative;
+  text-align: right;
+}
+.price {
+  text-align: left;
+}
+/* The depth bar sits behind the text, anchored to the right edge. */
+.depthBar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  z-index: 0;
+  opacity: 0.18;
+}
+.row > span {
+  position: relative;
+  z-index: 1;
+}
+.bidRow .depthBar {
+  background: var(--up);
+}
+.askRow .depthBar {
+  background: var(--down);
+}
+.bidRow .price {
+  color: var(--up);
+}
+.askRow .price {
+  color: var(--down);
+}
+.spread {
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--muted);
+  padding: 4px 0;
+  border-top: 1px dashed var(--border);
+  border-bottom: 1px dashed var(--border);
+  margin: 2px 0;
+}
+.muted {
+  color: var(--muted);
+}

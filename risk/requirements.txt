@@ -1,0 +1,20 @@
+# Python risk/ML service dependencies.
+# Pinned to recent, mutually-compatible versions (as of mid-2025) so builds are reproducible.
+#
+# Kafka client choice: we use `confluent-kafka`. It wraps librdkafka (C), so it is the fastest
+# and most production-grade Python Kafka client, with mature consumer-group semantics. The
+# trade-off is that it needs the librdkafka system lib (handled in the Dockerfile). For a
+# pure-pip / no-system-deps alternative you could swap in `kafka-python`; our consumer module
+# isolates the client behind a thin wrapper so swapping is a one-file change.
+
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+pydantic==2.7.4
+numpy==1.26.4
+pandas==2.2.2
+scikit-learn==1.5.0
+confluent-kafka==2.4.0
+
+# Dev / test
+pytest==8.2.2
+httpx==0.27.0          # FastAPI TestClient dependency

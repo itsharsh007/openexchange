@@ -1,0 +1,30 @@
+# secrets / config
+.env
+*.local
+
+# Java
+engine/.gradle/
+engine/build/
+*.class
+
+# Go
+gateway/bin/
+gateway/*.test
+
+# Python
+risk/.venv/
+risk/__pycache__/
+**/__pycache__/
+*.pyc
+risk/.pytest_cache/
+risk/models/*.pkl
+
+# Node / web
+web/node_modules/
+web/dist/
+web/.vite/
+
+# misc
+.DS_Store
+*.log
+deploy/data/

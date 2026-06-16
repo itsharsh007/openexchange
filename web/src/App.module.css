@@ -1,0 +1,97 @@
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  padding: 12px;
+  gap: 12px;
+}
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.topbar h1 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+.tag {
+  font-size: 0.65rem;
+  background: var(--border);
+  color: var(--muted);
+  padding: 2px 6px;
+  border-radius: 3px;
+  vertical-align: middle;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.grid {
+  display: grid;
+  grid-template-columns: 1.2fr 0.9fr 1fr;
+  grid-template-rows: auto auto;
+  grid-template-areas:
+    "book tape entry"
+    "book tape account"
+    "book tape risk";
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+}
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  overflow: auto;
+}
+.bookCard {
+  grid-area: book;
+}
+.tapeCard {
+  grid-area: tape;
+  display: flex;
+  flex-direction: column;
+}
+/* entry / account / risk fall into remaining cells in order */
+
+/* Connection badge */
+.conn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.open .dot {
+  background: var(--up);
+}
+.connecting .dot,
+.reconnecting .dot {
+  background: var(--warn);
+  animation: pulse 1s infinite;
+}
+.closed .dot {
+  background: var(--down);
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+@media (max-width: 900px) {
+  .grid {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "book"
+      "tape"
+      "entry"
+      "account"
+      "risk";
+  }
+}

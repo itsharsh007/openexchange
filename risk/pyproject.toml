@@ -1,0 +1,11 @@
+# Minimal project metadata + tooling config. We do NOT publish this as a wheel; it's a service.
+[project]
+name = "openexchange-risk"
+version = "0.1.0"
+description = "OpenExchange risk/ML service: price prediction, anomaly detection, risk scoring."
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+# Run from the risk/ dir; conftest.py puts it on the path. Quiet, show skip reasons.
+addopts = "-ra -q"
+testpaths = ["tests"]

@@ -1,0 +1,13 @@
+# Keep the build context tiny and avoid leaking local files into image layers.
+.git
+.gitignore
+*.md
+README.md
+Dockerfile
+.dockerignore
+.env
+*.log
+# Go build/test artifacts
+bin/
+*.test
+*.out

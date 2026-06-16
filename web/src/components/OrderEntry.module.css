@@ -1,0 +1,91 @@
+.entry {
+  display: flex;
+  flex-direction: column;
+}
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.header h2 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+.symbol {
+  font-weight: 600;
+  color: var(--accent);
+}
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+.sideToggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.sideBtn {
+  padding: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.buyActive {
+  background: var(--up);
+  color: #04140a;
+  border-color: var(--up);
+}
+.sellActive {
+  background: var(--down);
+  color: #1a0606;
+  border-color: var(--down);
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.field input,
+.field select {
+  padding: 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.field input:disabled {
+  opacity: 0.4;
+}
+.submit {
+  margin-top: 4px;
+  padding: 8px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 700;
+}
+.submit:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.submitBuy {
+  background: var(--up);
+  color: #04140a;
+}
+.submitSell {
+  background: var(--down);
+  color: #1a0606;
+}
+.error {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--down);
+}
