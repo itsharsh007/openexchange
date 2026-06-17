@@ -9,9 +9,12 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	"github.com/itsharsh007/openexchange/gateway/internal/cache"
 	"github.com/itsharsh007/openexchange/gateway/internal/config"
 	"github.com/itsharsh007/openexchange/gateway/internal/engine"
+	"github.com/itsharsh007/openexchange/gateway/internal/metrics"
 	"github.com/itsharsh007/openexchange/gateway/internal/middleware"
 	"github.com/itsharsh007/openexchange/gateway/internal/orderfeed"
 	"github.com/itsharsh007/openexchange/gateway/internal/ws"
@@ -57,6 +60,8 @@ func (s *Server) Routes(rl *middleware.RateLimiter, auth *middleware.JWTAuth) ht
 
 	// Public, unauthenticated liveness/readiness probe.
 	mux.HandleFunc("GET /healthz", s.handleHealth)
+	// Prometheus scrape endpoint — no auth so Prometheus can reach it without credentials.
+	mux.Handle("GET /metrics", promhttp.Handler())
 
 	// protect = rate limit -> JWT auth -> handler. Order matters: rate limit
 	// first so unauthenticated floods are cheap to reject before crypto work.
@@ -87,6 +92,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 // handleSubmit: POST /orders — accepts a NewOrder JSON, forwards to the engine,
 // and on a fill broadcasts a synthetic trade to WS subscribers.
 func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
 	var o engine.NewOrder
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&o); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid JSON body")
@@ -105,6 +111,9 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 	// limit), reject before touching the engine. The rejected attempt is still part
 	// of the account's order flow, so publish it to the `orders` topic too.
 	if blocked, reason := s.risk.Blocked(o.AccountID); blocked {
+		metrics.RiskGateRejectTotal.Inc()
+		metrics.OrderSubmitTotal.WithLabelValues("risk_blocked").Inc()
+		metrics.OrderLatencySeconds.Observe(time.Since(start).Seconds())
 		rejAck := engine.OrderAck{Status: engine.StatusRejected, Reason: "risk: " + reason}
 		s.orders.PublishSubmit(o, rejAck)
 		writeJSON(w, http.StatusUnprocessableEntity, rejAck)
@@ -115,10 +124,13 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	ack, err := s.eng.SubmitOrder(ctx, o)
+	metrics.OrderLatencySeconds.Observe(time.Since(start).Seconds())
 	if err != nil {
+		metrics.OrderSubmitTotal.WithLabelValues("gateway_error").Inc()
 		writeErr(w, http.StatusBadGateway, "engine unavailable: "+err.Error())
 		return
 	}
+	metrics.OrderSubmitTotal.WithLabelValues(string(ack.Status)).Inc()
 
 	// Publish the order attempt + its outcome to the `orders` topic for the risk
 	// service's anomaly features. Best-effort and async (see internal/orderfeed):

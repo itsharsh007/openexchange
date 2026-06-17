@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/itsharsh007/openexchange/gateway/internal/metrics"
 )
 
 // sendBuffer is how many messages may queue per client before we consider it
@@ -76,10 +77,12 @@ func (h *Hub) Run() {
 		select {
 		case c := <-h.register:
 			h.clients[c] = struct{}{}
+			metrics.WSClientsGauge.Set(float64(len(h.clients)))
 		case c := <-h.unregister:
 			if _, ok := h.clients[c]; ok {
 				delete(h.clients, c)
 				close(c.send) // signals writePump to exit
+				metrics.WSClientsGauge.Set(float64(len(h.clients)))
 			}
 		case msg := <-h.broadcast:
 			for c := range h.clients {

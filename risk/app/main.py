@@ -17,7 +17,8 @@ import logging
 import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from app import __version__
 from app.config import settings
@@ -61,6 +62,12 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="OpenExchange Risk/ML Service", version=__version__, lifespan=lifespan)
+
+
+@app.get("/metrics", include_in_schema=False)
+def metrics_endpoint() -> Response:
+    """Prometheus scrape endpoint — unauthenticated so Prometheus can reach it."""
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.get("/healthz")

@@ -33,6 +33,7 @@ import time
 from typing import Any
 
 from app.config import settings
+from app.metrics import messages_consumed_total, score_histogram, signals_published_total
 from app.models.risk import RiskScorer
 from app.store import store
 
@@ -171,10 +172,12 @@ class RiskConsumer:
             if not acct:
                 continue
             exposure, breaches, _gross = self._scorer.score(store.account_state(acct), now_millis=now)
+            score_histogram.observe(exposure)
+            action = "REJECT" if breaches else "ALLOW"
             self.publish_signal(
                 account_id=acct,
                 kind="RISK_EXPOSURE",
-                action=("REJECT" if breaches else "ALLOW"),
+                action=action,
                 score=exposure,
                 reason="; ".join(breaches) if breaches else "within limits",
                 ts_millis=now,
@@ -215,6 +218,7 @@ class RiskConsumer:
                 value=sig.SerializeToString(),
             )
             self._producer.poll(0)
+            signals_published_total.labels(action=action).inc()
         except Exception as exc:  # never let publishing crash the loop
             log.warning("Failed to publish risk signal: %s", exc)
 
@@ -236,6 +240,7 @@ class RiskConsumer:
                 try:
                     value = self._decode(msg.topic(), msg.value())
                     if value is not None:
+                        messages_consumed_total.labels(topic=msg.topic()).inc()
                         self.handle_message(msg.topic(), value)
                 except Exception as exc:  # bad payload shouldn't kill the loop
                     log.warning("Skipping bad message: %s", exc)

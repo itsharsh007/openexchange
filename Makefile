@@ -15,10 +15,15 @@ colima-stop: ## Stop the container VM and reclaim CPU/RAM
 infra: ## Start backing services only (Postgres, Redis, Kafka)
 	$(COMPOSE) up -d postgres redis kafka
 
-up: ## Start the full stack
-	$(COMPOSE) up -d
+up: ## Start the full stack (infra + services + Prometheus + Grafana)
+	$(COMPOSE) up -d --build
+	@echo ""
+	@echo "  Dashboard → http://localhost:5173"
+	@echo "  Gateway   → http://localhost:8080"
+	@echo "  Grafana   → http://localhost:3000"
+	@echo "  Prometheus→ http://localhost:9090"
 
-down: ## Stop everything
+down: ## Stop everything (volumes are kept; use 'down -v' to wipe data)
 	$(COMPOSE) down
 
 logs: ## Tail logs from all services

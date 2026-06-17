@@ -21,6 +21,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	oepb "github.com/itsharsh007/openexchange/gateway/genproto"
+	"github.com/itsharsh007/openexchange/gateway/internal/metrics"
 )
 
 // broadcaster is the slice of the WS hub the tape needs: push one JSON-able
@@ -80,6 +81,7 @@ func (c *TradeConsumer) Run(ctx context.Context) {
 			continue
 		}
 		c.hub.Broadcast(envelope)
+		metrics.TradesBroadcastTotal.Inc()
 	}
 }
 

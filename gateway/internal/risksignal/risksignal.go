@@ -28,6 +28,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	oepb "github.com/itsharsh007/openexchange/gateway/genproto"
+	"github.com/itsharsh007/openexchange/gateway/internal/metrics"
 )
 
 // Gate holds the latest risk decision per account. Safe for concurrent use: the
@@ -137,6 +138,7 @@ func (c *Consumer) Run(ctx context.Context) {
 			continue
 		}
 		c.gate.apply(sig)
+		metrics.RiskSignalsTotal.WithLabelValues(sig.GetAction().String()).Inc()
 		if c.hub != nil {
 			c.hub.Broadcast(riskEnvelope(sig))
 		}

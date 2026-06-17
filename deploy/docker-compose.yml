@@ -1,9 +1,20 @@
-# Local development stack. Works with Docker, Colima, or Podman (same compose CLI).
-# Bring up infra only:   docker compose -f deploy/docker-compose.yml up -d postgres redis kafka
-# Bring up everything:   docker compose -f deploy/docker-compose.yml up -d
+# OpenExchange — full local stack.
+#
+# Quick-start:
+#   make up        → starts everything (infra + services + observability)
+#   make seed      → creates Kafka topics + inserts demo accounts into Postgres
+#   make down      → stops and removes containers (data volumes persist)
+#   make logs      → tail all logs
+#
+# Infra only (no application services):
+#   docker compose -f deploy/docker-compose.yml up -d postgres redis kafka
+
 name: openexchange
 
 services:
+
+  # ── Infrastructure ──────────────────────────────────────────────────────────
+
   postgres:
     image: postgres:16-alpine
     environment:
@@ -11,7 +22,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-oex}
       POSTGRES_DB: ${POSTGRES_DB:-openexchange}
     ports: ["5432:5432"]
-    volumes: ["./data/postgres:/var/lib/postgresql/data"]
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-oex}"]
       interval: 5s
@@ -27,7 +39,7 @@ services:
       timeout: 3s
       retries: 10
 
-  # Kafka in KRaft mode (no Zookeeper).
+  # Kafka in KRaft mode — no Zookeeper.
   kafka:
     image: bitnami/kafka:3.7
     ports: ["9092:9092"]
@@ -36,42 +48,130 @@ services:
       KAFKA_CFG_PROCESS_ROLES: "controller,broker"
       KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: "0@kafka:9093"
       KAFKA_CFG_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093"
-      KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://localhost:9092"
+      # Advertise the Docker-internal hostname so service-to-service Kafka traffic
+      # resolves correctly inside the compose network.
+      KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092"
       KAFKA_CFG_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
       KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
       ALLOW_PLAINTEXT_LISTENER: "yes"
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
     healthcheck:
-      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1"]
+      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list"]
       interval: 10s
       timeout: 5s
       retries: 10
 
-  # ── Application services (built from their Dockerfiles; added as each phase lands) ──
-  # engine:
-  #   build: ../engine
-  #   depends_on: { postgres: {condition: service_healthy}, kafka: {condition: service_healthy} }
-  #   environment:
-  #     SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-openexchange}
-  #     KAFKA_BOOTSTRAP: kafka:9092
-  #   ports: ["9090:9090"]   # gRPC
-  #
-  # gateway:
-  #   build: ../gateway
-  #   depends_on: [engine, redis]
-  #   environment:
-  #     ENGINE_GRPC_ADDR: engine:9090
-  #     REDIS_ADDR: redis:6379
-  #   ports: ["8080:8080"]
-  #
-  # risk:
-  #   build: ../risk
-  #   depends_on: { kafka: {condition: service_healthy}, postgres: {condition: service_healthy} }
-  #   environment:
-  #     KAFKA_BOOTSTRAP: kafka:9092
-  #     DATABASE_URL: postgresql://oex:oex@postgres:5432/openexchange
-  #   ports: ["8000:8000"]
-  #
-  # web:
-  #   build: ../web
-  #   depends_on: [gateway]
-  #   ports: ["5173:80"]
+  # ── Application services ────────────────────────────────────────────────────
+
+  engine:
+    # Build context is the repo root: Gradle reads proto/ (shared contract).
+    build:
+      context: ..
+      dockerfile: engine/Dockerfile
+    depends_on:
+      postgres: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-openexchange}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-oex}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-oex}
+      KAFKA_BOOTSTRAP: kafka:9092
+      KAFKA_TOPIC_TRADES: trades
+    ports:
+      - "50051:50051"   # gRPC — gateway → engine
+      - "8081:8081"     # Spring Boot actuator (/actuator/health)
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  gateway:
+    build:
+      context: ../gateway
+    depends_on:
+      engine: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+    environment:
+      ENGINE_GRPC_ADDR: engine:50051
+      REDIS_ADDR: redis:6379
+      KAFKA_BOOTSTRAP: kafka:9092
+      ORDERS_TOPIC: orders
+      TRADES_TOPIC: trades
+      RISK_SIGNALS_TOPIC: risk-signals
+      RISK_CONSUMER_GROUP: gateway-risk
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-prod}
+      PORT: "8080"
+    ports:
+      - "8080:8080"   # REST + WebSocket + /metrics
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  risk:
+    build:
+      context: ../risk
+    depends_on:
+      kafka: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+      KAFKA_TOPIC_TRADES: trades
+      KAFKA_TOPIC_ORDERS: orders
+      KAFKA_TOPIC_SIGNALS: risk-signals
+      KAFKA_CONSUMER_GROUP: risk-consumer
+      DATABASE_URL: postgresql://${POSTGRES_USER:-oex}:${POSTGRES_PASSWORD:-oex}@postgres:5432/${POSTGRES_DB:-openexchange}
+    ports:
+      - "8000:8000"   # FastAPI REST + /metrics
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build:
+      context: ../web
+    depends_on:
+      gateway: { condition: service_healthy }
+    ports:
+      - "5173:80"   # nginx serves the Vite static bundle
+
+  # ── Observability ───────────────────────────────────────────────────────────
+
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    ports: ["9090:9090"]
+    depends_on:
+      - gateway
+      - risk
+
+  grafana:
+    image: grafana/grafana-oss:11.1.0
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Viewer"
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_ADMIN_PASSWORD:-admin}
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports: ["3000:3000"]
+    depends_on:
+      - prometheus
+
+volumes:
+  postgres_data:
+  prometheus_data:
+  grafana_data:
