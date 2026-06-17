@@ -17,6 +17,19 @@ import (
 	"github.com/itsharsh007/openexchange/gateway/internal/ws"
 )
 
+// RiskGate reports whether an account is currently blocked by the risk service.
+// An interface (not the concrete *risksignal.Gate) keeps handlers testable and lets
+// callers pass AllowAllGate to run without a risk-signals feed.
+type RiskGate interface {
+	Blocked(accountID string) (bool, string)
+}
+
+// AllowAllGate is a RiskGate that never blocks — the default when no risk-signals
+// consumer is wired (tests, or running the gateway standalone).
+type AllowAllGate struct{}
+
+func (AllowAllGate) Blocked(string) (bool, string) { return false, "" }
+
 // Server bundles dependencies for the HTTP handlers.
 type Server struct {
 	cfg    *config.Config
@@ -24,12 +37,13 @@ type Server struct {
 	cache  *cache.Cache
 	hub    *ws.Hub
 	orders orderfeed.Publisher
+	risk   RiskGate
 }
 
-// NewServer constructs the API server with its dependencies injected. orders may
-// be orderfeed.Noop to run without an `orders` topic (e.g. in tests).
-func NewServer(cfg *config.Config, eng engine.EngineClient, c *cache.Cache, hub *ws.Hub, orders orderfeed.Publisher) *Server {
-	return &Server{cfg: cfg, eng: eng, cache: c, hub: hub, orders: orders}
+// NewServer constructs the API server with its dependencies injected. orders may be
+// orderfeed.Noop and risk may be AllowAllGate{} to run without Kafka (e.g. in tests).
+func NewServer(cfg *config.Config, eng engine.EngineClient, c *cache.Cache, hub *ws.Hub, orders orderfeed.Publisher, risk RiskGate) *Server {
+	return &Server{cfg: cfg, eng: eng, cache: c, hub: hub, orders: orders, risk: risk}
 }
 
 // Routes builds the http.Handler with middleware applied per-route.
@@ -84,6 +98,16 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	if o.Symbol == "" {
 		writeErr(w, http.StatusBadRequest, "symbol required")
+		return
+	}
+
+	// Pre-trade risk gate: if the risk service has flagged this account (breaching a
+	// limit), reject before touching the engine. The rejected attempt is still part
+	// of the account's order flow, so publish it to the `orders` topic too.
+	if blocked, reason := s.risk.Blocked(o.AccountID); blocked {
+		rejAck := engine.OrderAck{Status: engine.StatusRejected, Reason: "risk: " + reason}
+		s.orders.PublishSubmit(o, rejAck)
+		writeJSON(w, http.StatusUnprocessableEntity, rejAck)
 		return
 	}
 

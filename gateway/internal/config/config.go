@@ -49,6 +49,11 @@ type Config struct {
 	// OrdersTopic is the topic the gateway publishes every order attempt to, for
 	// the risk service's anomaly features (see internal/orderfeed).
 	OrdersTopic string
+	// SignalsTopic is the topic the risk service publishes RiskSignals to; the
+	// gateway consumes it to gate orders from breaching accounts.
+	SignalsTopic string
+	// SignalsConsumerGroup is this gateway's consumer group for risk-signals.
+	SignalsConsumerGroup string
 }
 
 // Load reads configuration from the environment, applying defaults. It never
@@ -77,7 +82,9 @@ func Load() (*Config, []string) {
 		KafkaBootstrap:     getenv("KAFKA_BOOTSTRAP", "localhost:9092"),
 		TradesTopic:        getenv("TRADES_TOPIC", "trades"),
 		TapeConsumerGroup:  getenv("TAPE_CONSUMER_GROUP", "gateway-tape"),
-		OrdersTopic:        getenv("ORDERS_TOPIC", "orders"),
+		OrdersTopic:          getenv("ORDERS_TOPIC", "orders"),
+		SignalsTopic:         getenv("RISK_SIGNALS_TOPIC", "risk-signals"),
+		SignalsConsumerGroup: getenv("RISK_CONSUMER_GROUP", "gateway-risk"),
 	}
 	return cfg, warnings
 }
@@ -85,9 +92,10 @@ func Load() (*Config, []string) {
 // String renders config for boot logging WITHOUT leaking the secret.
 func (c *Config) String() string {
 	return fmt.Sprintf(
-		"listen=%s engine=%s redis=%s kafka=%s tradesTopic=%s tapeGroup=%s ordersTopic=%s rps=%.1f burst=%d engineTimeout=%s cacheTTL=%s jwtSecret=<redacted>",
+		"listen=%s engine=%s redis=%s kafka=%s tradesTopic=%s tapeGroup=%s ordersTopic=%s signalsTopic=%s riskGroup=%s rps=%.1f burst=%d engineTimeout=%s cacheTTL=%s jwtSecret=<redacted>",
 		c.ListenAddr, c.EngineGRPCAddr, c.RedisAddr,
 		c.KafkaBootstrap, c.TradesTopic, c.TapeConsumerGroup, c.OrdersTopic,
+		c.SignalsTopic, c.SignalsConsumerGroup,
 		c.RateLimitPerSecond, c.RateLimitBurst, c.EngineTimeout, c.CacheTTL,
 	)
 }

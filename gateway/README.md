@@ -38,10 +38,13 @@ React dashboard ──REST + WS──> [ gateway ] ──gRPC──> Java matchi
 4. **Order feed**: publishes an `OrderEvent` to the Kafka `orders` topic for every
    order attempt (incl. rejected/cancelled) for the risk service's anomaly features
    (`internal/orderfeed/`; best-effort + async — never affects order handling).
-5. **gRPC client** to the Java matching engine (real adapter in
+5. **Risk gate**: consumes the risk service's `risk-signals` topic into a per-account
+   gate; orders from a flagged (limit-breaching) account are rejected before reaching
+   the engine (`internal/risksignal/`; fails open if the risk feed is down).
+6. **gRPC client** to the Java matching engine (real adapter in
    `internal/engine/grpc_client.go`; a `MockClient` remains for tests).
-6. **Middleware**: per-client token-bucket rate limiting + JWT bearer auth.
-7. **Redis** caching of top-of-book, degrading gracefully when Redis is down.
+7. **Middleware**: per-client token-bucket rate limiting + JWT bearer auth.
+8. **Redis** caching of top-of-book, degrading gracefully when Redis is down.
 
 ## Architecture / package layout
 ```
@@ -55,6 +58,7 @@ internal/cache/              # Redis wrapper with graceful degradation
 internal/ws/                 # WebSocket fan-out hub (register/unregister/broadcast)
 internal/tape/               # Kafka `trades` consumer -> decode proto Trade -> hub.Broadcast
 internal/orderfeed/          # Kafka `orders` producer -> proto OrderEvent (risk anomaly features)
+internal/risksignal/         # Kafka `risk-signals` consumer -> per-account reject Gate
 internal/api/                # HTTP handlers + routing
 ```
 **Design principle — dependency inversion:** handlers depend on the small
@@ -80,6 +84,8 @@ it boot with zero config in dev.
 | `TRADES_TOPIC` | `trades` | Topic the engine publishes executed trades to |
 | `TAPE_CONSUMER_GROUP` | `gateway-tape` | Consumer group for the trade tape |
 | `ORDERS_TOPIC` | `orders` | Topic the gateway publishes every order attempt to (risk features) |
+| `RISK_SIGNALS_TOPIC` | `risk-signals` | Topic of RiskSignals the gateway gates orders on |
+| `RISK_CONSUMER_GROUP` | `gateway-risk` | Consumer group for the risk-signals gate |
 
 ## Running it
 ```bash

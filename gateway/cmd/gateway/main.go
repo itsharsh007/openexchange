@@ -25,6 +25,7 @@ import (
 	"github.com/itsharsh007/openexchange/gateway/internal/engine"
 	"github.com/itsharsh007/openexchange/gateway/internal/middleware"
 	"github.com/itsharsh007/openexchange/gateway/internal/orderfeed"
+	"github.com/itsharsh007/openexchange/gateway/internal/risksignal"
 	"github.com/itsharsh007/openexchange/gateway/internal/tape"
 	"github.com/itsharsh007/openexchange/gateway/internal/ws"
 )
@@ -81,10 +82,23 @@ func main() {
 	orderPub := orderfeed.NewKafkaPublisher([]string{cfg.KafkaBootstrap}, cfg.OrdersTopic)
 	defer func() { _ = orderPub.Close() }()
 
+	// Risk gate: consume the risk service's `risk-signals` topic into an in-memory
+	// per-account gate that the order path checks before forwarding to the engine.
+	// Fails open if Kafka/risk is down (gate stays empty -> nothing blocked).
+	riskGate := risksignal.NewGate()
+	riskCtx, stopRisk := context.WithCancel(context.Background())
+	riskConsumer := risksignal.NewConsumer(
+		[]string{cfg.KafkaBootstrap}, cfg.SignalsTopic, cfg.SignalsConsumerGroup, riskGate)
+	go riskConsumer.Run(riskCtx)
+	defer func() {
+		stopRisk()
+		_ = riskConsumer.Close()
+	}()
+
 	// Middleware + routes.
 	rl := middleware.NewRateLimiter(cfg.RateLimitPerSecond, cfg.RateLimitBurst)
 	auth := middleware.NewJWTAuth(cfg.JWTSecret)
-	srv := api.NewServer(cfg, eng, c, hub, orderPub)
+	srv := api.NewServer(cfg, eng, c, hub, orderPub, riskGate)
 
 	httpServer := &http.Server{
 		Addr:              cfg.ListenAddr,
