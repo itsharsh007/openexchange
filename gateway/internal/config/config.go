@@ -46,6 +46,9 @@ type Config struct {
 	// TapeConsumerGroup is this gateway's consumer group for the trade tape.
 	// Each gateway replica joins the same group; partitions are shared across them.
 	TapeConsumerGroup string
+	// OrdersTopic is the topic the gateway publishes every order attempt to, for
+	// the risk service's anomaly features (see internal/orderfeed).
+	OrdersTopic string
 }
 
 // Load reads configuration from the environment, applying defaults. It never
@@ -74,6 +77,7 @@ func Load() (*Config, []string) {
 		KafkaBootstrap:     getenv("KAFKA_BOOTSTRAP", "localhost:9092"),
 		TradesTopic:        getenv("TRADES_TOPIC", "trades"),
 		TapeConsumerGroup:  getenv("TAPE_CONSUMER_GROUP", "gateway-tape"),
+		OrdersTopic:        getenv("ORDERS_TOPIC", "orders"),
 	}
 	return cfg, warnings
 }
@@ -81,9 +85,9 @@ func Load() (*Config, []string) {
 // String renders config for boot logging WITHOUT leaking the secret.
 func (c *Config) String() string {
 	return fmt.Sprintf(
-		"listen=%s engine=%s redis=%s kafka=%s tradesTopic=%s tapeGroup=%s rps=%.1f burst=%d engineTimeout=%s cacheTTL=%s jwtSecret=<redacted>",
+		"listen=%s engine=%s redis=%s kafka=%s tradesTopic=%s tapeGroup=%s ordersTopic=%s rps=%.1f burst=%d engineTimeout=%s cacheTTL=%s jwtSecret=<redacted>",
 		c.ListenAddr, c.EngineGRPCAddr, c.RedisAddr,
-		c.KafkaBootstrap, c.TradesTopic, c.TapeConsumerGroup,
+		c.KafkaBootstrap, c.TradesTopic, c.TapeConsumerGroup, c.OrdersTopic,
 		c.RateLimitPerSecond, c.RateLimitBurst, c.EngineTimeout, c.CacheTTL,
 	)
 }

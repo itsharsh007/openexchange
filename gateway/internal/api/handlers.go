@@ -13,20 +13,23 @@ import (
 	"github.com/itsharsh007/openexchange/gateway/internal/config"
 	"github.com/itsharsh007/openexchange/gateway/internal/engine"
 	"github.com/itsharsh007/openexchange/gateway/internal/middleware"
+	"github.com/itsharsh007/openexchange/gateway/internal/orderfeed"
 	"github.com/itsharsh007/openexchange/gateway/internal/ws"
 )
 
 // Server bundles dependencies for the HTTP handlers.
 type Server struct {
-	cfg   *config.Config
-	eng   engine.EngineClient
-	cache *cache.Cache
-	hub   *ws.Hub
+	cfg    *config.Config
+	eng    engine.EngineClient
+	cache  *cache.Cache
+	hub    *ws.Hub
+	orders orderfeed.Publisher
 }
 
-// NewServer constructs the API server with its dependencies injected.
-func NewServer(cfg *config.Config, eng engine.EngineClient, c *cache.Cache, hub *ws.Hub) *Server {
-	return &Server{cfg: cfg, eng: eng, cache: c, hub: hub}
+// NewServer constructs the API server with its dependencies injected. orders may
+// be orderfeed.Noop to run without an `orders` topic (e.g. in tests).
+func NewServer(cfg *config.Config, eng engine.EngineClient, c *cache.Cache, hub *ws.Hub, orders orderfeed.Publisher) *Server {
+	return &Server{cfg: cfg, eng: eng, cache: c, hub: hub, orders: orders}
 }
 
 // Routes builds the http.Handler with middleware applied per-route.
@@ -93,6 +96,11 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Publish the order attempt + its outcome to the `orders` topic for the risk
+	// service's anomaly features. Best-effort and async (see internal/orderfeed):
+	// it runs only after the engine has acked and never affects this response.
+	s.orders.PublishSubmit(o, ack)
+
 	// NOTE: the real-time trade tape is NOT synthesized here anymore. Every
 	// executed trade — including the resting (maker) side that never called this
 	// gateway — is published by the engine to the Kafka `trades` topic and fanned
@@ -128,6 +136,11 @@ func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadGateway, "engine unavailable: "+err.Error())
 		return
 	}
+
+	// A cancel is part of an account's order flow too (rapid cancels are a classic
+	// spoofing signal), so publish it to the `orders` topic — best-effort, async.
+	s.orders.PublishCancel(cancelReq, ack)
+
 	writeJSON(w, http.StatusOK, ack)
 }
 

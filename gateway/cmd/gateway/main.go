@@ -24,6 +24,7 @@ import (
 	"github.com/itsharsh007/openexchange/gateway/internal/config"
 	"github.com/itsharsh007/openexchange/gateway/internal/engine"
 	"github.com/itsharsh007/openexchange/gateway/internal/middleware"
+	"github.com/itsharsh007/openexchange/gateway/internal/orderfeed"
 	"github.com/itsharsh007/openexchange/gateway/internal/tape"
 	"github.com/itsharsh007/openexchange/gateway/internal/ws"
 )
@@ -74,10 +75,16 @@ func main() {
 		_ = tradeTape.Close()
 	}()
 
+	// Order feed: publish every order attempt to the Kafka `orders` topic for the
+	// risk service's anomaly features. Best-effort + async (see internal/orderfeed)
+	// — a broker outage degrades risk features, never order handling.
+	orderPub := orderfeed.NewKafkaPublisher([]string{cfg.KafkaBootstrap}, cfg.OrdersTopic)
+	defer func() { _ = orderPub.Close() }()
+
 	// Middleware + routes.
 	rl := middleware.NewRateLimiter(cfg.RateLimitPerSecond, cfg.RateLimitBurst)
 	auth := middleware.NewJWTAuth(cfg.JWTSecret)
-	srv := api.NewServer(cfg, eng, c, hub)
+	srv := api.NewServer(cfg, eng, c, hub, orderPub)
 
 	httpServer := &http.Server{
 		Addr:              cfg.ListenAddr,

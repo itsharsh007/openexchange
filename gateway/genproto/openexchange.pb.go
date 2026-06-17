@@ -506,6 +506,144 @@ func (x *OrderAck) GetReason() string {
 	return ""
 }
 
+// OrderEvent is published by the gateway to the `orders` topic for EVERY order it
+// processes — new submissions AND cancels, including ones the engine REJECTS. The
+// risk service consumes this stream to build per-account order-flow features
+// (velocity, sizing, spoofing patterns) for anomaly scoring.
+//
+// WHY the gateway, not the engine, is the producer: the anomaly model scores order
+// *attempts*, so it must see orders the engine never accepts (rejected, malformed,
+// rate-limited). The gateway is the only component that observes every attempt at
+// the authenticated edge, and it already knows the verified account_id.
+//
+// Wire format is protobuf — the same contract-first rule as the `trades` topic
+// (see docs/adr/0004): the topic's shape is pinned here once, not guessed per
+// service. Keyed by account_id so one account's flow lands on one partition (the
+// risk features are per-account, so per-account ordering is what matters).
+type OrderEvent struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ClientOrderId string                 `protobuf:"bytes,1,opt,name=client_order_id,json=clientOrderId,proto3" json:"client_order_id,omitempty"` // idempotency key the client supplied (empty for cancels with none)
+	AccountId     string                 `protobuf:"bytes,2,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`               // the authenticated account that made the attempt
+	Symbol        string                 `protobuf:"bytes,3,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	Side          Side                   `protobuf:"varint,4,opt,name=side,proto3,enum=openexchange.v1.Side" json:"side,omitempty"`             // unset for a cancel (the gateway does not look it up)
+	Type          OrderType              `protobuf:"varint,5,opt,name=type,proto3,enum=openexchange.v1.OrderType" json:"type,omitempty"`        // unset for a cancel
+	PriceTicks    int64                  `protobuf:"varint,6,opt,name=price_ticks,json=priceTicks,proto3" json:"price_ticks,omitempty"`         // 0 for MARKET / cancel
+	Quantity      int64                  `protobuf:"varint,7,opt,name=quantity,proto3" json:"quantity,omitempty"`                               // 0 for a cancel
+	IsCancel      bool                   `protobuf:"varint,8,opt,name=is_cancel,json=isCancel,proto3" json:"is_cancel,omitempty"`               // true => this is a cancel attempt, not a new order
+	OrderId       string                 `protobuf:"bytes,9,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`                   // engine-assigned id from the ack; for a cancel, the targeted id
+	Status        OrderStatus            `protobuf:"varint,10,opt,name=status,proto3,enum=openexchange.v1.OrderStatus" json:"status,omitempty"` // the engine's resulting status (ACCEPTED / REJECTED / CANCELLED / ...)
+	TsMillis      int64                  `protobuf:"varint,11,opt,name=ts_millis,json=tsMillis,proto3" json:"ts_millis,omitempty"`              // when the gateway processed the attempt
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OrderEvent) Reset() {
+	*x = OrderEvent{}
+	mi := &file_openexchange_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OrderEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OrderEvent) ProtoMessage() {}
+
+func (x *OrderEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_openexchange_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OrderEvent.ProtoReflect.Descriptor instead.
+func (*OrderEvent) Descriptor() ([]byte, []int) {
+	return file_openexchange_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *OrderEvent) GetClientOrderId() string {
+	if x != nil {
+		return x.ClientOrderId
+	}
+	return ""
+}
+
+func (x *OrderEvent) GetAccountId() string {
+	if x != nil {
+		return x.AccountId
+	}
+	return ""
+}
+
+func (x *OrderEvent) GetSymbol() string {
+	if x != nil {
+		return x.Symbol
+	}
+	return ""
+}
+
+func (x *OrderEvent) GetSide() Side {
+	if x != nil {
+		return x.Side
+	}
+	return Side_SIDE_UNSPECIFIED
+}
+
+func (x *OrderEvent) GetType() OrderType {
+	if x != nil {
+		return x.Type
+	}
+	return OrderType_ORDER_TYPE_UNSPECIFIED
+}
+
+func (x *OrderEvent) GetPriceTicks() int64 {
+	if x != nil {
+		return x.PriceTicks
+	}
+	return 0
+}
+
+func (x *OrderEvent) GetQuantity() int64 {
+	if x != nil {
+		return x.Quantity
+	}
+	return 0
+}
+
+func (x *OrderEvent) GetIsCancel() bool {
+	if x != nil {
+		return x.IsCancel
+	}
+	return false
+}
+
+func (x *OrderEvent) GetOrderId() string {
+	if x != nil {
+		return x.OrderId
+	}
+	return ""
+}
+
+func (x *OrderEvent) GetStatus() OrderStatus {
+	if x != nil {
+		return x.Status
+	}
+	return OrderStatus_ORDER_STATUS_UNSPECIFIED
+}
+
+func (x *OrderEvent) GetTsMillis() int64 {
+	if x != nil {
+		return x.TsMillis
+	}
+	return 0
+}
+
 type Trade struct {
 	state       protoimpl.MessageState `protogen:"open.v1"`
 	TradeId     string                 `protobuf:"bytes,1,opt,name=trade_id,json=tradeId,proto3" json:"trade_id,omitempty"`
@@ -525,7 +663,7 @@ type Trade struct {
 
 func (x *Trade) Reset() {
 	*x = Trade{}
-	mi := &file_openexchange_proto_msgTypes[3]
+	mi := &file_openexchange_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -537,7 +675,7 @@ func (x *Trade) String() string {
 func (*Trade) ProtoMessage() {}
 
 func (x *Trade) ProtoReflect() protoreflect.Message {
-	mi := &file_openexchange_proto_msgTypes[3]
+	mi := &file_openexchange_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -550,7 +688,7 @@ func (x *Trade) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Trade.ProtoReflect.Descriptor instead.
 func (*Trade) Descriptor() ([]byte, []int) {
-	return file_openexchange_proto_rawDescGZIP(), []int{3}
+	return file_openexchange_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Trade) GetTradeId() string {
@@ -626,7 +764,7 @@ type PriceLevel struct {
 
 func (x *PriceLevel) Reset() {
 	*x = PriceLevel{}
-	mi := &file_openexchange_proto_msgTypes[4]
+	mi := &file_openexchange_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -638,7 +776,7 @@ func (x *PriceLevel) String() string {
 func (*PriceLevel) ProtoMessage() {}
 
 func (x *PriceLevel) ProtoReflect() protoreflect.Message {
-	mi := &file_openexchange_proto_msgTypes[4]
+	mi := &file_openexchange_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -651,7 +789,7 @@ func (x *PriceLevel) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PriceLevel.ProtoReflect.Descriptor instead.
 func (*PriceLevel) Descriptor() ([]byte, []int) {
-	return file_openexchange_proto_rawDescGZIP(), []int{4}
+	return file_openexchange_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *PriceLevel) GetPriceTicks() int64 {
@@ -680,7 +818,7 @@ type BookSnapshot struct {
 
 func (x *BookSnapshot) Reset() {
 	*x = BookSnapshot{}
-	mi := &file_openexchange_proto_msgTypes[5]
+	mi := &file_openexchange_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -692,7 +830,7 @@ func (x *BookSnapshot) String() string {
 func (*BookSnapshot) ProtoMessage() {}
 
 func (x *BookSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_openexchange_proto_msgTypes[5]
+	mi := &file_openexchange_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -705,7 +843,7 @@ func (x *BookSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BookSnapshot.ProtoReflect.Descriptor instead.
 func (*BookSnapshot) Descriptor() ([]byte, []int) {
-	return file_openexchange_proto_rawDescGZIP(), []int{5}
+	return file_openexchange_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *BookSnapshot) GetSymbol() string {
@@ -746,7 +884,7 @@ type BookRequest struct {
 
 func (x *BookRequest) Reset() {
 	*x = BookRequest{}
-	mi := &file_openexchange_proto_msgTypes[6]
+	mi := &file_openexchange_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -758,7 +896,7 @@ func (x *BookRequest) String() string {
 func (*BookRequest) ProtoMessage() {}
 
 func (x *BookRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_openexchange_proto_msgTypes[6]
+	mi := &file_openexchange_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -771,7 +909,7 @@ func (x *BookRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BookRequest.ProtoReflect.Descriptor instead.
 func (*BookRequest) Descriptor() ([]byte, []int) {
-	return file_openexchange_proto_rawDescGZIP(), []int{6}
+	return file_openexchange_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *BookRequest) GetSymbol() string {
@@ -803,7 +941,7 @@ type RiskSignal struct {
 
 func (x *RiskSignal) Reset() {
 	*x = RiskSignal{}
-	mi := &file_openexchange_proto_msgTypes[7]
+	mi := &file_openexchange_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -815,7 +953,7 @@ func (x *RiskSignal) String() string {
 func (*RiskSignal) ProtoMessage() {}
 
 func (x *RiskSignal) ProtoReflect() protoreflect.Message {
-	mi := &file_openexchange_proto_msgTypes[7]
+	mi := &file_openexchange_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -828,7 +966,7 @@ func (x *RiskSignal) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RiskSignal.ProtoReflect.Descriptor instead.
 func (*RiskSignal) Descriptor() ([]byte, []int) {
-	return file_openexchange_proto_rawDescGZIP(), []int{7}
+	return file_openexchange_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *RiskSignal) GetKind() SignalKind {
@@ -904,7 +1042,23 @@ const file_openexchange_proto_rawDesc = "" +
 	"\border_id\x18\x01 \x01(\tR\aorderId\x124\n" +
 	"\x06status\x18\x02 \x01(\x0e2\x1c.openexchange.v1.OrderStatusR\x06status\x12'\n" +
 	"\x0ffilled_quantity\x18\x03 \x01(\x03R\x0efilledQuantity\x12\x16\n" +
-	"\x06reason\x18\x04 \x01(\tR\x06reason\"\xa8\x02\n" +
+	"\x06reason\x18\x04 \x01(\tR\x06reason\"\x8e\x03\n" +
+	"\n" +
+	"OrderEvent\x12&\n" +
+	"\x0fclient_order_id\x18\x01 \x01(\tR\rclientOrderId\x12\x1d\n" +
+	"\n" +
+	"account_id\x18\x02 \x01(\tR\taccountId\x12\x16\n" +
+	"\x06symbol\x18\x03 \x01(\tR\x06symbol\x12)\n" +
+	"\x04side\x18\x04 \x01(\x0e2\x15.openexchange.v1.SideR\x04side\x12.\n" +
+	"\x04type\x18\x05 \x01(\x0e2\x1a.openexchange.v1.OrderTypeR\x04type\x12\x1f\n" +
+	"\vprice_ticks\x18\x06 \x01(\x03R\n" +
+	"priceTicks\x12\x1a\n" +
+	"\bquantity\x18\a \x01(\x03R\bquantity\x12\x1b\n" +
+	"\tis_cancel\x18\b \x01(\bR\bisCancel\x12\x19\n" +
+	"\border_id\x18\t \x01(\tR\aorderId\x124\n" +
+	"\x06status\x18\n" +
+	" \x01(\x0e2\x1c.openexchange.v1.OrderStatusR\x06status\x12\x1b\n" +
+	"\tts_millis\x18\v \x01(\x03R\btsMillis\"\xa8\x02\n" +
 	"\x05Trade\x12\x19\n" +
 	"\btrade_id\x18\x01 \x01(\tR\atradeId\x12\x16\n" +
 	"\x06symbol\x18\x02 \x01(\tR\x06symbol\x12\x1f\n" +
@@ -987,7 +1141,7 @@ func file_openexchange_proto_rawDescGZIP() []byte {
 }
 
 var file_openexchange_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
-var file_openexchange_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_openexchange_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_openexchange_proto_goTypes = []any{
 	(Side)(0),                  // 0: openexchange.v1.Side
 	(OrderType)(0),             // 1: openexchange.v1.OrderType
@@ -997,31 +1151,35 @@ var file_openexchange_proto_goTypes = []any{
 	(*NewOrder)(nil),           // 5: openexchange.v1.NewOrder
 	(*CancelOrderRequest)(nil), // 6: openexchange.v1.CancelOrderRequest
 	(*OrderAck)(nil),           // 7: openexchange.v1.OrderAck
-	(*Trade)(nil),              // 8: openexchange.v1.Trade
-	(*PriceLevel)(nil),         // 9: openexchange.v1.PriceLevel
-	(*BookSnapshot)(nil),       // 10: openexchange.v1.BookSnapshot
-	(*BookRequest)(nil),        // 11: openexchange.v1.BookRequest
-	(*RiskSignal)(nil),         // 12: openexchange.v1.RiskSignal
+	(*OrderEvent)(nil),         // 8: openexchange.v1.OrderEvent
+	(*Trade)(nil),              // 9: openexchange.v1.Trade
+	(*PriceLevel)(nil),         // 10: openexchange.v1.PriceLevel
+	(*BookSnapshot)(nil),       // 11: openexchange.v1.BookSnapshot
+	(*BookRequest)(nil),        // 12: openexchange.v1.BookRequest
+	(*RiskSignal)(nil),         // 13: openexchange.v1.RiskSignal
 }
 var file_openexchange_proto_depIdxs = []int32{
 	0,  // 0: openexchange.v1.NewOrder.side:type_name -> openexchange.v1.Side
 	1,  // 1: openexchange.v1.NewOrder.type:type_name -> openexchange.v1.OrderType
 	2,  // 2: openexchange.v1.OrderAck.status:type_name -> openexchange.v1.OrderStatus
-	9,  // 3: openexchange.v1.BookSnapshot.bids:type_name -> openexchange.v1.PriceLevel
-	9,  // 4: openexchange.v1.BookSnapshot.asks:type_name -> openexchange.v1.PriceLevel
-	3,  // 5: openexchange.v1.RiskSignal.kind:type_name -> openexchange.v1.SignalKind
-	4,  // 6: openexchange.v1.RiskSignal.action:type_name -> openexchange.v1.SignalAction
-	5,  // 7: openexchange.v1.MatchingEngine.SubmitOrder:input_type -> openexchange.v1.NewOrder
-	6,  // 8: openexchange.v1.MatchingEngine.CancelOrder:input_type -> openexchange.v1.CancelOrderRequest
-	11, // 9: openexchange.v1.MatchingEngine.GetBook:input_type -> openexchange.v1.BookRequest
-	7,  // 10: openexchange.v1.MatchingEngine.SubmitOrder:output_type -> openexchange.v1.OrderAck
-	7,  // 11: openexchange.v1.MatchingEngine.CancelOrder:output_type -> openexchange.v1.OrderAck
-	10, // 12: openexchange.v1.MatchingEngine.GetBook:output_type -> openexchange.v1.BookSnapshot
-	10, // [10:13] is the sub-list for method output_type
-	7,  // [7:10] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	0,  // 3: openexchange.v1.OrderEvent.side:type_name -> openexchange.v1.Side
+	1,  // 4: openexchange.v1.OrderEvent.type:type_name -> openexchange.v1.OrderType
+	2,  // 5: openexchange.v1.OrderEvent.status:type_name -> openexchange.v1.OrderStatus
+	10, // 6: openexchange.v1.BookSnapshot.bids:type_name -> openexchange.v1.PriceLevel
+	10, // 7: openexchange.v1.BookSnapshot.asks:type_name -> openexchange.v1.PriceLevel
+	3,  // 8: openexchange.v1.RiskSignal.kind:type_name -> openexchange.v1.SignalKind
+	4,  // 9: openexchange.v1.RiskSignal.action:type_name -> openexchange.v1.SignalAction
+	5,  // 10: openexchange.v1.MatchingEngine.SubmitOrder:input_type -> openexchange.v1.NewOrder
+	6,  // 11: openexchange.v1.MatchingEngine.CancelOrder:input_type -> openexchange.v1.CancelOrderRequest
+	12, // 12: openexchange.v1.MatchingEngine.GetBook:input_type -> openexchange.v1.BookRequest
+	7,  // 13: openexchange.v1.MatchingEngine.SubmitOrder:output_type -> openexchange.v1.OrderAck
+	7,  // 14: openexchange.v1.MatchingEngine.CancelOrder:output_type -> openexchange.v1.OrderAck
+	11, // 15: openexchange.v1.MatchingEngine.GetBook:output_type -> openexchange.v1.BookSnapshot
+	13, // [13:16] is the sub-list for method output_type
+	10, // [10:13] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_openexchange_proto_init() }
@@ -1035,7 +1193,7 @@ func file_openexchange_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_openexchange_proto_rawDesc), len(file_openexchange_proto_rawDesc)),
 			NumEnums:      5,
-			NumMessages:   8,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

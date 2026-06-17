@@ -35,10 +35,13 @@ React dashboard ──REST + WS──> [ gateway ] ──gRPC──> Java matchi
    connected client.
 3. **Trade tape**: a Kafka consumer of the engine's `trades` topic that fans every
    *real* executed trade out to all dashboards over WebSocket (`internal/tape/`).
-4. **gRPC client** to the Java matching engine (real adapter in
+4. **Order feed**: publishes an `OrderEvent` to the Kafka `orders` topic for every
+   order attempt (incl. rejected/cancelled) for the risk service's anomaly features
+   (`internal/orderfeed/`; best-effort + async — never affects order handling).
+5. **gRPC client** to the Java matching engine (real adapter in
    `internal/engine/grpc_client.go`; a `MockClient` remains for tests).
-5. **Middleware**: per-client token-bucket rate limiting + JWT bearer auth.
-6. **Redis** caching of top-of-book, degrading gracefully when Redis is down.
+6. **Middleware**: per-client token-bucket rate limiting + JWT bearer auth.
+7. **Redis** caching of top-of-book, degrading gracefully when Redis is down.
 
 ## Architecture / package layout
 ```
@@ -51,6 +54,7 @@ internal/middleware/         # ratelimit.go (token bucket), auth.go (JWT)
 internal/cache/              # Redis wrapper with graceful degradation
 internal/ws/                 # WebSocket fan-out hub (register/unregister/broadcast)
 internal/tape/               # Kafka `trades` consumer -> decode proto Trade -> hub.Broadcast
+internal/orderfeed/          # Kafka `orders` producer -> proto OrderEvent (risk anomaly features)
 internal/api/                # HTTP handlers + routing
 ```
 **Design principle — dependency inversion:** handlers depend on the small
@@ -75,6 +79,7 @@ it boot with zero config in dev.
 | `KAFKA_BOOTSTRAP` | `localhost:9092` | Kafka brokers for the trade-tape consumer |
 | `TRADES_TOPIC` | `trades` | Topic the engine publishes executed trades to |
 | `TAPE_CONSUMER_GROUP` | `gateway-tape` | Consumer group for the trade tape |
+| `ORDERS_TOPIC` | `orders` | Topic the gateway publishes every order attempt to (risk features) |
 
 ## Running it
 ```bash
