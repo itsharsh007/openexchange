@@ -22,6 +22,9 @@ type Config struct {
 	ListenAddr string
 	// EngineGRPCAddr is the address of the Java matching engine's gRPC server.
 	EngineGRPCAddr string
+	// EngineMode selects the engine client: "grpc" (real engine, default) or "mock"
+	// (in-process MockClient) so the gateway can run/demo standalone without the JVM.
+	EngineMode string
 	// RedisAddr is the Redis endpoint used to cache top-of-book snapshots.
 	RedisAddr string
 	// JWTSecret is the HMAC secret used to verify bearer tokens.
@@ -73,6 +76,7 @@ func Load() (*Config, []string) {
 	cfg := &Config{
 		ListenAddr:         ":" + port,
 		EngineGRPCAddr:     getenv("ENGINE_GRPC_ADDR", "localhost:50051"),
+		EngineMode:         getenv("ENGINE_MODE", "grpc"),
 		RedisAddr:          getenv("REDIS_ADDR", "localhost:6379"),
 		JWTSecret:          jwtSecret,
 		RateLimitPerSecond: getenvFloat("RATE_LIMIT_RPS", 20),

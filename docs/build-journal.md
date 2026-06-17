@@ -284,4 +284,83 @@ Format of each entry: **Symptom → Cause → Fix → Lesson.**
 - **Lesson:** keep the byte-mapping pure and the policy (gate) a plain in-memory type; a broker is
   only needed for the live wiring test, not for logic correctness.
 
-<!-- Append new entries below as the infra phase / live end-to-end demo lands. -->
+---
+
+## Phase 3 → End-to-end live demo (2026-06-17)
+
+### Problem: Colima unavailable on macOS 12 (qemu not installed)
+
+**Symptom:** `colima start` exited with `cannot use vmType: 'qemu': qemu-img not found`.
+Colima 0.x on macOS 12 uses QEMU as the VM backend, which requires `brew install qemu`. Docker
+compose plugin was also absent from Colima's bundled Docker binary (the `compose` plugin shipped
+separately in newer Docker CLI versions).
+
+**Fix:** Downloaded Kafka 3.7.1 tarball to `~/tools/`, formatted a single-node KRaft cluster
+(`kafka-storage.sh format`), and ran `kafka-server-start.sh` directly on the local JVM (Java 17
+already installed for the engine). No container or VM needed for a local demo broker.
+
+**Lesson:** For macOS dev boxes where container tooling is inconsistent, native KRaft Kafka needs
+only Java 17 — zero extra installs. The broker starts in ~4 seconds and handles the full demo
+throughput without issue.
+
+### Problem: Risk consumer logs silently dropped inside uvicorn
+
+**Symptom:** Ran the risk service via `uvicorn app.main:app`; the background Kafka consumer thread
+started (no error) but the `INFO:risk.consumer:Kafka connected` log never appeared. The root
+`logging` level defaults to WARNING when no `basicConfig` call is made; uvicorn's own logging only
+covers HTTP access, not application loggers.
+
+**Fix:** For the live demo, ran the consumer standalone (`python3 -m app.kafka_consumer`) where
+`main()` calls `logging.basicConfig(level=logging.INFO)`. In production the right fix is to set
+`log_config` in the uvicorn call (or add a `logging.config` call in `main.py`) so the `risk.*`
+loggers are routed through uvicorn's handler.
+
+### End-to-end demo result (cap=5 orders/min, sent 9 orders)
+
+Setup:
+- KRaft Kafka on `localhost:9092`, topics: `orders`, `trades`, `risk-signals` (4 partitions each)
+- Gateway in `ENGINE_MODE=mock`, `JWT_SECRET=demo-secret`, port 8081
+- Risk consumer standalone, `RISK_MAX_ORDERS_PER_MIN=5`, group `risk-consumer-live`
+- JWT minted with `python3 /tmp/oex_jwt.py acct-velocity-test demo-secret`
+
+Observed order responses:
+
+```
+Order 1 → ACCEPTED   ord-9
+Order 2 → ACCEPTED   ord-10
+Order 3 → ACCEPTED   ord-11
+Order 4 → ACCEPTED   ord-12
+Order 5 → ACCEPTED   ord-13
+Order 6 → ACCEPTED   ord-14   ← first breaching order slips through (eventually-consistent gate)
+Order 7 → REJECTED   "risk: 6 orders/min exceeds cap 5 (velocity)"
+Order 8 → REJECTED   "risk: 7 orders/min exceeds cap 5 (velocity)"
+Order 9 → REJECTED   "risk: 8 orders/min exceeds cap 5 (velocity)"
+```
+
+Messages observed on `risk-signals` topic (decoded from protobuf):
+
+```
+account=acct-velocity-test action=ALLOW score=0.00 reason='within limits'
+... (score climbs 0.20 → 0.40 → 0.60 → 0.80 → 1.00 as orders arrive) ...
+account=acct-velocity-test action=REJECT score=1.00 reason='6 orders/min exceeds cap 5 (velocity)'
+account=acct-velocity-test action=REJECT score=1.00 reason='7 orders/min exceeds cap 5 (velocity)'
+account=acct-velocity-test action=ALLOW  score=0.00 reason='within limits'   ← self-clears after 60s
+```
+
+Gateway log (confirming in-memory Gate lifecycle):
+
+```
+risksignal: BLOCK acct-velocity-test (score=1.00) 6 orders/min exceeds cap 5 (velocity)
+risksignal: BLOCK acct-velocity-test (score=1.00) 7 orders/min exceeds cap 5 (velocity)
+risksignal: BLOCK acct-velocity-test (score=1.00) 8 orders/min exceeds cap 5 (velocity)
+risksignal: CLEAR acct-velocity-test (within limits)   ← 60s later, gate cleared automatically
+```
+
+**This confirms the complete async risk-signal loop:**
+`order → gateway → OrderEvent(orders) → risk consumer → score → RiskSignal(risk-signals) → gateway Gate → 422 REJECTED`
+
+The "first breach slips through" behaviour is correct and matches ADR 0005's eventual-consistency
+trade-off: the risk loop is async and the gate only applies from the next signal onward. The
+self-clearing after 60 seconds (velocity window expiry) also behaves as designed.
+
+<!-- Append new entries below as Phase 4 (React dashboard) / Phase 5 (infra+observability) land. -->
