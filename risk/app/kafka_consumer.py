@@ -16,9 +16,11 @@ WHY a thin wrapper around the client
   spec) touches only this file.
 
 DECODING
-- The ``trades`` topic carries the **protobuf** ``Trade`` message the engine publishes (the shared
-  proto/ contract), decoded via the generated stub in ``app/genproto`` — imported lazily so this
-  module still imports on a bare box. The ``orders`` topic has no producer yet and stays JSON.
+- Both the ``trades`` and ``orders`` topics carry **protobuf** messages from the shared proto/
+  contract: ``Trade`` (published by the engine) and ``OrderEvent`` (published by the Go gateway for
+  every order attempt — see docs/adr/0004). Both are decoded via the generated stub in
+  ``app/genproto``, imported lazily so this module still imports on a bare box. Any other topic
+  falls back to tolerant JSON.
 """
 
 from __future__ import annotations
@@ -96,14 +98,16 @@ class RiskConsumer:
     def _decode(self, topic: str, raw: bytes) -> dict[str, Any] | None:
         """Decode a raw Kafka value into the dict shape ``handle_message`` expects.
 
-        The ``trades`` topic carries the **protobuf** ``Trade`` message the engine publishes, so we
-        decode it with the generated stub. The ``orders`` topic has no producer yet, so we stay
-        tolerant and decode it as JSON. Returns None for an unknown/empty payload."""
+        The ``trades`` topic carries the engine's protobuf ``Trade`` and the ``orders`` topic carries
+        the gateway's protobuf ``OrderEvent``; both are decoded with the generated stub. Any other
+        topic falls back to tolerant JSON. Returns None for an unknown/empty payload."""
         if not raw:
             return None
         if topic == settings.topic_trades:
             return self._decode_trade(raw)
-        # orders (and any other topic): tolerant JSON until a real producer exists.
+        if topic == settings.topic_orders:
+            return self._decode_order(raw)
+        # Any other topic: tolerant JSON.
         return json.loads(raw.decode("utf-8"))
 
     @staticmethod
@@ -119,6 +123,24 @@ class RiskConsumer:
             "quantity": t.quantity,
             "buy_account_id": t.buy_account_id,
             "sell_account_id": t.sell_account_id,
+        }
+
+    @staticmethod
+    def _decode_order(raw: bytes) -> dict[str, Any]:
+        """Protobuf ``OrderEvent`` bytes -> dict (the shape ``handle_message`` expects for orders).
+
+        The gateway publishes one of these for every order attempt — including engine-rejected ones,
+        which are themselves an anomaly signal. The stub is imported lazily to preserve import-safety
+        (see ``_decode_trade``)."""
+        from app.genproto.openexchange_pb2 import OrderEvent  # lazy import: preserves import-safety
+
+        e = OrderEvent.FromString(raw)
+        return {
+            "account_id": e.account_id,
+            "symbol": e.symbol,
+            "quantity": e.quantity,
+            "ts_millis": e.ts_millis,
+            "is_cancel": e.is_cancel,
         }
 
     def publish_signal(self, signal_obj: dict[str, Any]) -> None:

@@ -96,3 +96,40 @@ def test_decode_protobuf_trade_updates_store(monkeypatch):
     assert fresh.recent_prices("ABC") == [10_000]
     assert fresh.account_state("acct-buy").positions["ABC"] == 5
     assert fresh.account_state("acct-sell").positions["ABC"] == -5
+
+
+def test_decode_protobuf_order_updates_stats(monkeypatch):
+    """The `orders` topic carries the gateway's protobuf OrderEvent — decode bytes -> dict -> store.
+
+    Skips cleanly on a bare box without the protobuf runtime / generated stub."""
+    pytest.importorskip("google.protobuf", reason="protobuf runtime not installed")
+    pb = pytest.importorskip(
+        "app.genproto.openexchange_pb2", reason="run `make proto-python` to generate stubs"
+    )
+
+    fresh = FeatureStore()
+    import app.kafka_consumer as kc
+    monkeypatch.setattr(kc, "store", fresh)
+
+    # Serialize exactly what the gateway publishes for a submitted (rejected or not) order.
+    raw = pb.OrderEvent(
+        client_order_id="c-1",
+        account_id="a1",
+        symbol="ABC",
+        side=pb.BUY,
+        type=pb.LIMIT,
+        price_ticks=10_000,
+        quantity=12,
+        is_cancel=False,
+        order_id="ord-1",
+        status=pb.ACCEPTED,
+        ts_millis=5000,
+    ).SerializeToString()
+
+    c = RiskConsumer()
+    value = c._decode(settings.topic_orders, raw)
+    c.handle_message(settings.topic_orders, value)
+
+    stats = fresh.order_stats("a1")
+    assert stats.submits == 1
+    assert list(stats.sizes) == [12.0]
