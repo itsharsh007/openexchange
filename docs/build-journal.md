@@ -173,4 +173,62 @@ Format of each entry: **Symptom → Cause → Fix → Lesson.**
 - **Lesson:** a new dependency can grow `go.sum` with its test deps; that's expected and not bloat in
   the shipped binary.
 
+## Phase 2→3 — order event streaming (gateway → Kafka `orders`)
+
+### Who should produce the `orders` topic — engine or gateway?
+- **Symptom (design):** the risk service already consumed an `orders` topic, but nothing published
+  to it. The obvious candidate is the engine (it sees orders), but that's wrong.
+- **Cause/insight:** the anomaly model scores order *attempts*, and the most valuable signal is the
+  attempts the engine **rejects** (malformed, rate-limited, rapid cancels = spoofing). Those never
+  reach the engine — they die at the gateway. Only the **gateway** sees every attempt, at the
+  authenticated edge, with a verified `account_id`.
+- **Fix:** the gateway publishes an `OrderEvent` after each submit/cancel ack. Captured in ADR 0004.
+- **Lesson:** "who has the data" isn't "who's downstream" — it's "who observes the full event set."
+  For attempt/rejection telemetry, that's the edge service, not the core.
+
+### No existing proto message fit an "order event"
+- **Symptom:** wanted to reuse `NewOrder` for the topic, but it has no `is_cancel`, no resulting
+  `status`, and no `ts_millis` — so it can't represent a cancel or a rejection outcome.
+- **Fix:** added a dedicated `OrderEvent` message to `proto/` (contract-first, per the docs) that is
+  the envelope for "what the gateway observed": identity + is_cancel + order_id + status + ts_millis.
+  Regenerated Go (`make proto`) and Python (`make proto-python`) stubs from the one source.
+- **Lesson:** don't overload a request message as an event message — an event needs outcome + time
+  fields a request doesn't have. Model the event explicitly in the contract.
+
+### Partition key differs per topic: account_id vs symbol
+- **Decision:** `orders` is keyed by **account_id**; `trades` is keyed by **symbol**.
+- **Why:** ordering only has to hold within the unit a consumer aggregates on. Risk features are
+  per-account, so per-account ordering is what matters for `orders`; the trade tape is per-symbol, so
+  `trades` keys by symbol. Picking the key to match the consumer's aggregation unit maximizes
+  parallelism without breaking the ordering the consumer actually needs.
+- **Lesson:** the partition key is a consumer-driven choice, not a producer-driven one — key by
+  whatever the downstream needs ordered.
+
+### `protoc-gen-go` wasn't installed, but the build stayed light
+- **Symptom:** `protoc-gen-go` / `protoc-gen-go-grpc` not on PATH when regenerating Go stubs.
+- **Fix:** the `make proto` target already `go install`s them on demand into `$(go env GOPATH)/bin`;
+  exporting that dir onto PATH for the one command was enough. It's a small one-time fetch, not a
+  heavy compile — safe even on the thermally-constrained machine.
+- **Lesson:** keep codegen tool bootstrapping inside the Makefile target so a fresh box self-heals;
+  no container or wrapper download needed.
+
+### Best-effort async producer via kafka-go (mirrors the engine's trade publisher)
+- **Decision:** the gateway's `orderfeed.KafkaPublisher` uses a kafka-go `Writer` with `Async:true`
+  + `RequiredAcks=RequireAll` + a `Completion` callback that only logs failures.
+- **Why:** this is an ML feature stream, not the money path — it must never block or fail an order
+  that already got an engine ack. Async makes `WriteMessages` enqueue-and-return; the completion
+  callback is the only place errors surface, which is exactly the best-effort contract we want.
+  Same shape as the engine's publish-after-ledger design (ADR 0003), now on the order side (ADR 0004).
+- **Lesson:** for derived/telemetry streams, publish after the authoritative step and make delivery
+  best-effort — push the durability guarantee onto the source of truth (ledger), not the stream.
+
+### Verifying the producer without a broker
+- **Fix:** the wire mapping lives in pure functions (`buildSubmitEvent` / `buildCancelEvent`, ts
+  passed in for determinism); the test marshals + unmarshals the protobuf to assert what actually
+  lands on the wire, including a **rejected** order (the case that matters most for anomalies) and a
+  cancel leaving side/type/qty unspecified. No broker, no Colima. Risk side verified the same way:
+  serialize a real `OrderEvent` and drive `_decode` → `handle_message`.
+- **Lesson:** keep the byte-mapping a pure function and round-trip it in a unit test; a broker is only
+  needed to test delivery, not encoding.
+
 <!-- Append new entries below as the infra phase / live end-to-end demo lands. -->
