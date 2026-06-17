@@ -45,44 +45,46 @@ const (
 )
 
 // NewOrder mirrors proto NewOrder.
+// JSON field names are camelCase to match web/src/types.ts (the frontend sends
+// and expects camelCase throughout; never snake_case the wire format for the UI).
 type NewOrder struct {
-	ClientOrderID string    `json:"client_order_id"`
-	AccountID     string    `json:"account_id"`
+	ClientOrderID string    `json:"clientOrderId"`
+	AccountID     string    `json:"accountId"`
 	Symbol        string    `json:"symbol"`
 	Side          Side      `json:"side"`
 	Type          OrderType `json:"type"`
-	PriceTicks    int64     `json:"price_ticks"` // ignored for MARKET
+	PriceTicks    int64     `json:"priceTicks"` // ignored for MARKET
 	Quantity      int64     `json:"quantity"`
 }
 
 // CancelOrder mirrors proto CancelOrder.
 type CancelOrder struct {
-	OrderID   string `json:"order_id"`
+	OrderID   string `json:"orderId"`
 	Symbol    string `json:"symbol"`
-	AccountID string `json:"account_id"`
+	AccountID string `json:"accountId"`
 }
 
 // OrderAck mirrors proto OrderAck.
 type OrderAck struct {
-	OrderID        string      `json:"order_id"`
+	OrderID        string      `json:"orderId"`
 	Status         OrderStatus `json:"status"`
-	FilledQuantity int64       `json:"filled_quantity"`
+	FilledQuantity int64       `json:"filledQuantity"`
 	Reason         string      `json:"reason,omitempty"`
 }
 
 // PriceLevel mirrors proto PriceLevel.
 type PriceLevel struct {
-	PriceTicks int64 `json:"price_ticks"`
+	PriceTicks int64 `json:"priceTicks"`
 	Quantity   int64 `json:"quantity"`
 }
 
 // BookSnapshot mirrors proto BookSnapshot. Bids are best-first (highest price),
 // asks best-first (lowest price).
 type BookSnapshot struct {
-	Symbol  string       `json:"symbol"`
-	Bids    []PriceLevel `json:"bids"`
-	Asks    []PriceLevel `json:"asks"`
-	TsMillis int64       `json:"ts_millis"`
+	Symbol   string       `json:"symbol"`
+	Bids     []PriceLevel `json:"bids"`
+	Asks     []PriceLevel `json:"asks"`
+	TsMillis int64        `json:"tsMillis"`
 }
 
 // BookRequest mirrors proto BookRequest.
@@ -93,13 +95,13 @@ type BookRequest struct {
 
 // Trade mirrors proto Trade. Used by the WS hub to broadcast fills.
 type Trade struct {
-	TradeID     string `json:"trade_id"`
+	TradeID     string `json:"tradeId"`
 	Symbol      string `json:"symbol"`
-	PriceTicks  int64  `json:"price_ticks"`
+	PriceTicks  int64  `json:"priceTicks"`
 	Quantity    int64  `json:"quantity"`
-	BuyOrderID  string `json:"buy_order_id"`
-	SellOrderID string `json:"sell_order_id"`
-	TsMillis    int64  `json:"ts_millis"`
+	BuyOrderID  string `json:"buyOrderId"`
+	SellOrderID string `json:"sellOrderId"`
+	TsMillis    int64  `json:"tsMillis"`
 }
 
 // EngineClient is the contract the gateway depends on. It maps 1:1 to the
@@ -142,7 +144,7 @@ func (m *MockClient) SubmitOrder(ctx context.Context, o NewOrder) (OrderAck, err
 		return OrderAck{OrderID: id, Status: StatusRejected, Reason: "quantity must be positive"}, nil
 	}
 	if o.Type == OrderTypeLimit && o.PriceTicks <= 0 {
-		return OrderAck{OrderID: id, Status: StatusRejected, Reason: "limit order requires positive price_ticks"}, nil
+		return OrderAck{OrderID: id, Status: StatusRejected, Reason: "limit order requires positive priceTicks"}, nil
 	}
 
 	// Pretend a MARKET order fully fills, while a LIMIT order rests (accepted).

@@ -125,6 +125,12 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 	// it runs only after the engine has acked and never affects this response.
 	s.orders.PublishSubmit(o, ack)
 
+	// Push a fresh book snapshot to all WS clients so the ladder updates
+	// immediately after an order touches the book. Done in a goroutine so it
+	// never delays the HTTP response. Best-effort: engine/cache errors are
+	// logged and ignored.
+	go s.broadcastBook(o.Symbol)
+
 	// NOTE: the real-time trade tape is NOT synthesized here anymore. Every
 	// executed trade — including the resting (maker) side that never called this
 	// gateway — is published by the engine to the Kafka `trades` topic and fanned
@@ -200,6 +206,32 @@ func (s *Server) handleBook(w http.ResponseWriter, r *http.Request) {
 	s.cache.SetBook(ctx, depth, snap)
 	w.Header().Set("X-Cache", "MISS")
 	writeJSON(w, http.StatusOK, snap)
+}
+
+// broadcastBook fetches the latest book snapshot for symbol and pushes it to all
+// WS clients so the depth ladder refreshes without a client poll. Called in a
+// goroutine — errors are logged and never surface to callers.
+func (s *Server) broadcastBook(symbol string) {
+	ctx, cancel := context.WithTimeout(context.Background(), s.cfg.EngineTimeout)
+	defer cancel()
+
+	const broadcastDepth = 20
+	var snap engine.BookSnapshot
+	var err error
+	if cached, ok := s.cache.GetBook(ctx, symbol, broadcastDepth); ok {
+		snap = cached
+	} else {
+		snap, err = s.eng.GetBook(ctx, engine.BookRequest{Symbol: symbol, Depth: broadcastDepth})
+		if err != nil {
+			log.Printf("api: broadcastBook %s: %v", symbol, err)
+			return
+		}
+		s.cache.SetBook(ctx, broadcastDepth, snap)
+	}
+	s.hub.Broadcast(struct {
+		Type string              `json:"type"`
+		Data engine.BookSnapshot `json:"data"`
+	}{Type: "book", Data: snap})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

@@ -1,15 +1,12 @@
+import { formatTime } from "../util/format";
 import type { RiskSignal } from "../types";
-import { ticksToPrice } from "../util/format";
 import styles from "./RiskPanel.module.css";
 
-// ML / risk signals from the Python risk service (via Kafka → gateway → WS).
+// Risk / exposure signals from the Python risk service (via Kafka → gateway → WS).
 //
-// Shows the three model outputs described in docs/architecture.md:
-//   1. price prediction (next-tick direction + confidence + predicted price)
-//   2. anomaly / fraud score (with an alert flag)
-//   3. per-account risk/exposure score
-// Bars give an at-a-glance read; the anomaly flag flips the panel into an alert
-// state so risky flow is impossible to miss.
+// Displays the per-account risk state: current exposure score, action
+// (ALLOW/REJECT), breach reason, and signal timestamp. The panel turns red when
+// the account is REJECTED so a blocked state is impossible to miss.
 
 interface RiskPanelProps {
   signal: RiskSignal | null;
@@ -31,65 +28,54 @@ export function RiskPanel({ signal }: RiskPanelProps) {
     );
   }
 
-  const dirClass =
-    signal.predictedDirection === "UP"
-      ? styles.up
-      : signal.predictedDirection === "DOWN"
-        ? styles.down
-        : styles.flat;
+  const isBlocked = signal.action === "REJECT";
 
   return (
-    <section
-      className={`${styles.panel} ${signal.anomalyFlag ? styles.alert : ""}`}
-    >
+    <section className={`${styles.panel} ${isBlocked ? styles.alert : ""}`}>
       <header className={styles.header}>
         <h2>Risk / ML</h2>
-        {signal.anomalyFlag && <span className={styles.badge}>ANOMALY</span>}
+        {isBlocked && <span className={styles.badge}>BLOCKED</span>}
       </header>
 
-      {/* 1. Price prediction */}
       <div className={styles.block}>
-        <div className={styles.label}>Next-tick prediction</div>
-        <div className={styles.predRow}>
-          <span className={`${styles.dir} ${dirClass}`}>
-            {signal.predictedDirection === "UP"
-              ? "▲"
-              : signal.predictedDirection === "DOWN"
-                ? "▼"
-                : "►"}{" "}
-            {signal.predictedDirection}
-          </span>
-          <span className={styles.predPrice}>
-            → {ticksToPrice(signal.predictedPriceTicks)}
-          </span>
-          <span className={styles.muted}>conf {pct(signal.confidence)}</span>
+        <div className={styles.label}>Account</div>
+        <div className={styles.value}>{signal.accountId || "—"}</div>
+      </div>
+
+      <div className={styles.block}>
+        <div className={styles.label}>
+          Exposure score
+          <span className={styles.muted}> ({signal.kind})</span>
         </div>
-        <Bar value={signal.confidence} kind="info" />
+        <Bar value={signal.score} warn={signal.score >= 0.8} />
+        <div className={styles.scoreRow}>
+          <span className={isBlocked ? styles.down : styles.up}>
+            {isBlocked ? "▼ REJECT" : "▲ ALLOW"}
+          </span>
+          <span className={styles.muted}>{pct(signal.score)}</span>
+        </div>
       </div>
 
-      {/* 2. Anomaly / fraud */}
-      <div className={styles.block}>
-        <div className={styles.label}>Anomaly score</div>
-        <Bar value={signal.anomalyScore} kind="warn" />
-        <span className={styles.muted}>{pct(signal.anomalyScore)}</span>
-      </div>
+      {isBlocked && (
+        <div className={styles.block}>
+          <div className={styles.label}>Reason</div>
+          <div className={`${styles.value} ${styles.reason}`}>{signal.reason}</div>
+        </div>
+      )}
 
-      {/* 3. Risk / exposure */}
       <div className={styles.block}>
-        <div className={styles.label}>Account risk</div>
-        <Bar value={signal.riskScore} kind="warn" />
-        <span className={styles.muted}>{pct(signal.riskScore)}</span>
+        <div className={styles.muted}>Updated {formatTime(signal.tsMillis)}</div>
       </div>
     </section>
   );
 }
 
-function Bar({ value, kind }: { value: number; kind: "info" | "warn" }) {
+function Bar({ value, warn }: { value: number; warn: boolean }) {
   const clamped = Math.max(0, Math.min(1, value));
   return (
     <div className={styles.barTrack}>
       <div
-        className={`${styles.barFill} ${kind === "warn" ? styles.warnFill : styles.infoFill}`}
+        className={`${styles.barFill} ${warn ? styles.warnFill : styles.infoFill}`}
         style={{ width: `${clamped * 100}%` }}
       />
     </div>

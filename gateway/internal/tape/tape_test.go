@@ -35,16 +35,15 @@ func TestDecodeTradeProducesDashboardEnvelope(t *testing.T) {
 	if env.Type != "trade" {
 		t.Errorf("type = %q, want %q", env.Type, "trade")
 	}
-	got := env.Trade
+	got := env.Data
 	if got.TradeID != "AAPL-T1" || got.Symbol != "AAPL" || got.PriceTicks != 15000 ||
-		got.Quantity != 10 || got.BuyAccountID != "alice" || got.SellAccountID != "bob" ||
-		got.TsMillis != 1700000000000 {
+		got.Quantity != 10 || got.TsMillis != 1700000000000 {
 		t.Errorf("envelope mismatch: %+v", got)
 	}
 
-	// The marshalled JSON must carry snake_case keys the frontend reads.
+	// JSON must carry camelCase keys matching web/src/types.ts Trade interface.
 	b, _ := json.Marshal(env)
-	for _, key := range []string{`"type":"trade"`, `"trade_id":"AAPL-T1"`, `"price_ticks":15000`, `"buy_account_id":"alice"`} {
+	for _, key := range []string{`"type":"trade"`, `"data":`, `"tradeId":"AAPL-T1"`, `"priceTicks":15000`} {
 		if !contains(string(b), key) {
 			t.Errorf("JSON %s missing %s", b, key)
 		}

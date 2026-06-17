@@ -86,22 +86,23 @@ func (c *TradeConsumer) Run(ctx context.Context) {
 // Close releases the underlying reader.
 func (c *TradeConsumer) Close() error { return c.reader.Close() }
 
-// tradeEnvelope is the WebSocket message shape the dashboard expects. Keeping it
-// here (and identical to what the gateway used to synthesize) means the frontend
-// contract is unchanged — only the *source* of the trade moved to the engine.
+// tradeEnvelope is the WebSocket message shape the dashboard expects.
+// The outer key is "data" (not "trade") to match the discriminated union in
+// web/src/types.ts: { type: "trade"; data: Trade }. Field names are camelCase
+// to match the TypeScript interface (the frontend never snake_cases JSON).
 type tradeEnvelope struct {
-	Type  string     `json:"type"` // always "trade"
-	Trade tradeFields `json:"trade"`
+	Type string     `json:"type"` // always "trade"
+	Data tradeFields `json:"data"`
 }
 
 type tradeFields struct {
-	TradeID       string `json:"trade_id"`
-	Symbol        string `json:"symbol"`
-	PriceTicks    int64  `json:"price_ticks"`
-	Quantity      int64  `json:"quantity"`
-	BuyAccountID  string `json:"buy_account_id"`
-	SellAccountID string `json:"sell_account_id"`
-	TsMillis      int64  `json:"ts_millis"`
+	TradeID      string `json:"tradeId"`
+	Symbol       string `json:"symbol"`
+	PriceTicks   int64  `json:"priceTicks"`
+	Quantity     int64  `json:"quantity"`
+	BuyOrderId   string `json:"buyOrderId"`
+	SellOrderId  string `json:"sellOrderId"`
+	TsMillis     int64  `json:"tsMillis"`
 }
 
 // decodeTrade unmarshals one protobuf Trade message (the wire format the engine
@@ -114,14 +115,14 @@ func decodeTrade(value []byte) (tradeEnvelope, error) {
 	}
 	return tradeEnvelope{
 		Type: "trade",
-		Trade: tradeFields{
-			TradeID:       t.GetTradeId(),
-			Symbol:        t.GetSymbol(),
-			PriceTicks:    t.GetPriceTicks(),
-			Quantity:      t.GetQuantity(),
-			BuyAccountID:  t.GetBuyAccountId(),
-			SellAccountID: t.GetSellAccountId(),
-			TsMillis:      t.GetTsMillis(),
+		Data: tradeFields{
+			TradeID:     t.GetTradeId(),
+			Symbol:      t.GetSymbol(),
+			PriceTicks:  t.GetPriceTicks(),
+			Quantity:    t.GetQuantity(),
+			BuyOrderId:  t.GetBuyAccountId(),
+			SellOrderId: t.GetSellAccountId(),
+			TsMillis:    t.GetTsMillis(),
 		},
 	}, nil
 }

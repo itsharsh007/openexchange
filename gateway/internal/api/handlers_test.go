@@ -41,7 +41,7 @@ func newTestServer(gate RiskGate, pub *capturePub) *Server {
 
 func submit(t *testing.T, srv *Server, account string) *httptest.ResponseRecorder {
 	t.Helper()
-	body := `{"account_id":"` + account + `","symbol":"AAPL","side":"BUY","type":"LIMIT","price_ticks":10000,"quantity":5}`
+	body := `{"accountId":"` + account + `","symbol":"AAPL","side":"BUY","type":"LIMIT","priceTicks":10000,"quantity":5}`
 	req := httptest.NewRequest(http.MethodPost, "/orders", strings.NewReader(body))
 	w := httptest.NewRecorder()
 	srv.handleSubmit(w, req)

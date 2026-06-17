@@ -96,7 +96,7 @@ func main() {
 	riskGate := risksignal.NewGate()
 	riskCtx, stopRisk := context.WithCancel(context.Background())
 	riskConsumer := risksignal.NewConsumer(
-		[]string{cfg.KafkaBootstrap}, cfg.SignalsTopic, cfg.SignalsConsumerGroup, riskGate)
+		[]string{cfg.KafkaBootstrap}, cfg.SignalsTopic, cfg.SignalsConsumerGroup, riskGate, hub)
 	go riskConsumer.Run(riskCtx)
 	defer func() {
 		stopRisk()

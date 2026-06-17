@@ -84,16 +84,26 @@ func (g *Gate) apply(sig *oepb.RiskSignal) {
 	}
 }
 
+// broadcaster is the slice of the WS hub the consumer needs. Defined here so the
+// consumer is unit-testable with a fake (same pattern as package tape).
+type broadcaster interface {
+	Broadcast(v any)
+}
+
 // Consumer reads `risk-signals` and feeds each decoded signal into the Gate.
+// It also broadcasts each signal to the WS hub so the dashboard can display the
+// live risk state in the RiskPanel.
 type Consumer struct {
 	reader *kafka.Reader
 	gate   *Gate
+	hub    broadcaster // nil = no WS fan-out (tests / standalone)
 }
 
 // NewConsumer builds a consumer for the given broker/topic/group, feeding gate.
+// hub may be nil — risk signals will still gate orders, just not reach the WS.
 // kafka-go connects lazily and retries with backoff, so a broker down at boot is
 // non-fatal (the gate just stays empty -> fail-open).
-func NewConsumer(brokers []string, topic, groupID string, gate *Gate) *Consumer {
+func NewConsumer(brokers []string, topic, groupID string, gate *Gate, hub broadcaster) *Consumer {
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:     brokers,
 		Topic:       topic,
@@ -103,7 +113,7 @@ func NewConsumer(brokers []string, topic, groupID string, gate *Gate) *Consumer 
 		MaxBytes:    10 << 20,
 		MaxWait:     500 * time.Millisecond,
 	})
-	return &Consumer{reader: reader, gate: gate}
+	return &Consumer{reader: reader, gate: gate, hub: hub}
 }
 
 // Run blocks consuming until ctx is cancelled. Broker errors are logged and the
@@ -127,6 +137,9 @@ func (c *Consumer) Run(ctx context.Context) {
 			continue
 		}
 		c.gate.apply(sig)
+		if c.hub != nil {
+			c.hub.Broadcast(riskEnvelope(sig))
+		}
 	}
 }
 
@@ -141,4 +154,37 @@ func decodeSignal(value []byte) (*oepb.RiskSignal, error) {
 		return nil, err
 	}
 	return &s, nil
+}
+
+// riskWsFields is the JSON shape the dashboard's RiskPanel expects.
+// Field names are camelCase to match web/src/types.ts RiskSignal.
+type riskWsFields struct {
+	AccountID string  `json:"accountId"`
+	Symbol    string  `json:"symbol"`
+	Kind      string  `json:"kind"`
+	Score     float64 `json:"score"`
+	Action    string  `json:"action"`
+	Reason    string  `json:"reason"`
+	TsMillis  int64   `json:"tsMillis"`
+}
+
+type riskWsEnvelope struct {
+	Type string       `json:"type"` // always "risk"
+	Data riskWsFields `json:"data"`
+}
+
+// riskEnvelope maps a protobuf RiskSignal to the WS envelope the dashboard reads.
+func riskEnvelope(s *oepb.RiskSignal) riskWsEnvelope {
+	return riskWsEnvelope{
+		Type: "risk",
+		Data: riskWsFields{
+			AccountID: s.GetAccountId(),
+			Symbol:    s.GetSymbol(),
+			Kind:      s.GetKind().String(),
+			Score:     float64(s.GetScore()),
+			Action:    s.GetAction().String(),
+			Reason:    s.GetReason(),
+			TsMillis:  s.GetTsMillis(),
+		},
+	}
 }
