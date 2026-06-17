@@ -23,6 +23,15 @@ leaves room for — not rewrites.
   during a broker outage even though the ledger has it. Durable fix: transactional outbox — see
   [`adr/0003-trade-event-streaming.md`](adr/0003-trade-event-streaming.md). The outbox row also
   carries a stable id, which subsumes the `trade_id` limitation above.
+- **Order publish is best-effort + async** (gateway → `orders`), same trade-off as trades — an attempt
+  can be acked to the client but miss the topic during a broker outage. Same outbox upgrade path. See
+  [`adr/0004-order-event-streaming.md`](adr/0004-order-event-streaming.md).
+- **Risk gating is eventually-consistent, post-trade, and fails open** (gateway consumes
+  `risk-signals`): the first breaching order slips through and the gate is bypassed entirely if the
+  risk service/broker is down. Deliberate — see
+  [`adr/0005-risk-signal-gating.md`](adr/0005-risk-signal-gating.md). Future hardening: a hard
+  synchronous pre-trade limit check (at the gateway or enforced in the engine) for accounts already
+  flagged, so even the first order after a breach is refused.
 
 ## Going public (later)
 - [ ] **User signup + isolated accounts** — each visitor gets an independent play-money wallet.

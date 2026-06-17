@@ -231,4 +231,57 @@ Format of each entry: **Symptom → Cause → Fix → Lesson.**
 - **Lesson:** keep the byte-mapping a pure function and round-trip it in a unit test; a broker is only
   needed to test delivery, not encoding.
 
+## Phase 3→2 — closing the loop: risk-signals → gateway reject path
+
+### Where does a risk verdict get enforced — engine, gateway, or a sync call?
+- **Symptom (design):** the risk service could compute "account X is over its limit," but nothing
+  acted on it. Three options: enforce in the engine, call the risk service synchronously per order,
+  or consume an async signal at the gateway.
+- **Decision:** async signal consumed at the **gateway** (ADR 0005). The engine is single-writer-
+  per-symbol and authoritative for matching — loading per-account risk + a Kafka consumer into it
+  crosses the symbol-sharding boundary and couples concerns. A synchronous call adds a network hop
+  and a hard Python dependency to the hot path. The gateway gate is an O(1) map lookup with no I/O.
+- **Lesson:** enforce cross-cutting policy (risk, auth, rate limits) at the edge, not in the core
+  domain engine — keep the engine doing one thing (matching) correctly and fast.
+
+### Fail-open vs fail-closed for a risk gate
+- **Decision:** the gate **fails open** — if the broker or risk service is down, no account is
+  blocked.
+- **Why:** blocking *all* trading because the risk sidecar is offline is worse than the risk it
+  mitigates. The ledger + the engine's own validation remain the authoritative correctness gates;
+  risk gating is a safety *overlay*. (Contrast an auth check, which must fail closed.)
+- **Lesson:** pick fail-open vs fail-closed by asking "what's the cost of the check being wrong in
+  each direction?" — for a derived, advisory overlay fed by an async stream, open is right.
+
+### Eventually-consistent, post-trade gating (and why that's fine)
+- **Symptom:** the signal that blocks an account is derived from an order/trade that *already*
+  happened, so the first breaching action slips through; only subsequent ones are blocked.
+- **Why it's acceptable:** exposure limits are computed from *filled positions*, which only exist
+  after a trade — so a position-limit gate is inherently post-trade. Keeping it async avoids a
+  per-order round-trip to Python. Documented as the explicit trade-off in ADR 0005; a hard
+  synchronous pre-trade check is noted as future hardening.
+- **Lesson:** name the consistency model out loud. "Eventually consistent, self-clearing, post-trade"
+  is a precise, defensible description an reader can probe — far better than pretending it's
+  a hard pre-trade limit.
+
+### Refactoring `publish_signal` from JSON dict to typed protobuf
+- **Symptom:** `publish_signal(dict)` emitted JSON and was called from one place (the `/score-order`
+  anomaly path). Closing the loop needed a second caller (the consumer's exposure scoring) and a
+  pinned wire format the Go gateway could decode.
+- **Fix:** changed it to keyword args (`account_id`, `action`, `kind`, `score`, `reason`, …) and
+  built a protobuf `RiskSignal`, mapping the enum *names* to values via `getattr(pb, name)` on the
+  lazily-imported stub (preserving import-safety). Updated both call sites.
+- **Lesson:** when a second consumer appears, that's the moment to pin the contract and drop the
+  placeholder JSON — exactly the lesson from the `trades` mismatch, applied proactively this time.
+
+### Testing the loop without a broker (both sides)
+- **Risk:** injected a fake (connected) producer + a tiny-limit scorer, drove `handle_message`, and
+  decoded the captured bytes back into a `RiskSignal` to assert `REJECT` + reason + per-account key.
+- **Gateway:** `decodeSignal` is a pure function (round-tripped in a unit test); the `Gate` is tested
+  for block→clear→fail-open transitions; the reject path is tested at the HTTP layer with a fake gate
+  + a `MockClient`, asserting `422`, the risk reason in the body, and that the rejected attempt is
+  still published to the order feed. No broker, no Colima.
+- **Lesson:** keep the byte-mapping pure and the policy (gate) a plain in-memory type; a broker is
+  only needed for the live wiring test, not for logic correctness.
+
 <!-- Append new entries below as the infra phase / live end-to-end demo lands. -->
