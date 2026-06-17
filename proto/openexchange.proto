@@ -55,6 +55,34 @@ message OrderAck {
   string reason = 4; // populated on REJECTED
 }
 
+// OrderEvent is published by the gateway to the `orders` topic for EVERY order it
+// processes — new submissions AND cancels, including ones the engine REJECTS. The
+// risk service consumes this stream to build per-account order-flow features
+// (velocity, sizing, spoofing patterns) for anomaly scoring.
+//
+// WHY the gateway, not the engine, is the producer: the anomaly model scores order
+// *attempts*, so it must see orders the engine never accepts (rejected, malformed,
+// rate-limited). The gateway is the only component that observes every attempt at
+// the authenticated edge, and it already knows the verified account_id.
+//
+// Wire format is protobuf — the same contract-first rule as the `trades` topic
+// (see docs/adr/0004): the topic's shape is pinned here once, not guessed per
+// service. Keyed by account_id so one account's flow lands on one partition (the
+// risk features are per-account, so per-account ordering is what matters).
+message OrderEvent {
+  string client_order_id = 1; // idempotency key the client supplied (empty for cancels with none)
+  string account_id = 2;      // the authenticated account that made the attempt
+  string symbol = 3;
+  Side side = 4;              // unset for a cancel (the gateway does not look it up)
+  OrderType type = 5;        // unset for a cancel
+  int64 price_ticks = 6;     // 0 for MARKET / cancel
+  int64 quantity = 7;        // 0 for a cancel
+  bool is_cancel = 8;        // true => this is a cancel attempt, not a new order
+  string order_id = 9;       // engine-assigned id from the ack; for a cancel, the targeted id
+  OrderStatus status = 10;   // the engine's resulting status (ACCEPTED / REJECTED / CANCELLED / ...)
+  int64 ts_millis = 11;      // when the gateway processed the attempt
+}
+
 message Trade {
   string trade_id = 1;
   string symbol = 2;
