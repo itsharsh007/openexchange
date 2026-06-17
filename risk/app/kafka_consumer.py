@@ -29,9 +29,11 @@ import json
 import logging
 import signal
 import threading
+import time
 from typing import Any
 
 from app.config import settings
+from app.models.risk import RiskScorer
 from app.store import store
 
 log = logging.getLogger("risk.consumer")
@@ -43,6 +45,9 @@ class RiskConsumer:
         self._producer = None
         self._stop = threading.Event()
         self._connected = False
+        # Deterministic, rule-based exposure scorer (no ML, no heavy deps) — import-safe.
+        # Used to derive a RiskSignal after each trade/order so the gateway can gate orders.
+        self._scorer = RiskScorer()
 
     # ── Connection (lazy + guarded) ────────────────────────────────────────────
     def _connect(self) -> bool:
@@ -78,6 +83,8 @@ class RiskConsumer:
     def handle_message(self, topic: str, value: dict[str, Any]) -> None:
         """Route one decoded message into the feature store. Pure function of its inputs => testable
         directly without any broker (see tests)."""
+        # Accounts whose risk state changed, so we re-score and signal only those.
+        affected: set[str] = set()
         if topic == settings.topic_trades:
             store.apply_trade(
                 symbol=value["symbol"],
@@ -86,6 +93,8 @@ class RiskConsumer:
                 buy_account_id=value.get("buy_account_id"),
                 sell_account_id=value.get("sell_account_id"),
             )
+            # A fill moves both sides' positions/notional -> re-evaluate both.
+            affected.update(a for a in (value.get("buy_account_id"), value.get("sell_account_id")) if a)
         elif topic == settings.topic_orders:
             store.apply_order(
                 account_id=value["account_id"],
@@ -94,6 +103,14 @@ class RiskConsumer:
                 ts_millis=int(value.get("ts_millis", 0)),
                 is_cancel=bool(value.get("is_cancel", False)),
             )
+            # An order bumps the velocity clock -> re-evaluate the submitter.
+            affected.add(value["account_id"])
+        else:
+            return
+
+        # Close the loop: derive a RiskSignal for each affected account and publish it so the
+        # gateway can gate future orders. No-op when not connected (tests, bare box).
+        self._evaluate_and_signal(affected)
 
     def _decode(self, topic: str, raw: bytes) -> dict[str, Any] | None:
         """Decode a raw Kafka value into the dict shape ``handle_message`` expects.
@@ -143,15 +160,59 @@ class RiskConsumer:
             "is_cancel": e.is_cancel,
         }
 
-    def publish_signal(self, signal_obj: dict[str, Any]) -> None:
-        """Publish a risk signal to the `risk-signals` topic. No-op if not connected."""
+    def _evaluate_and_signal(self, account_ids: set[str]) -> None:
+        """Score each account's current exposure and publish a RiskSignal (REJECT on any breach,
+        else ALLOW). The gateway keeps the latest signal per account as a gate — so a breach blocks
+        new orders, and the next ALLOW (exposure back within limits) clears the block."""
+        if not account_ids:
+            return
+        now = int(time.time() * 1000)
+        for acct in account_ids:
+            if not acct:
+                continue
+            exposure, breaches, _gross = self._scorer.score(store.account_state(acct), now_millis=now)
+            self.publish_signal(
+                account_id=acct,
+                kind="RISK_EXPOSURE",
+                action=("REJECT" if breaches else "ALLOW"),
+                score=exposure,
+                reason="; ".join(breaches) if breaches else "within limits",
+                ts_millis=now,
+            )
+
+    def publish_signal(
+        self,
+        *,
+        account_id: str,
+        action: str,
+        kind: str = "RISK_EXPOSURE",
+        score: float = 0.0,
+        symbol: str = "",
+        reason: str = "",
+        ts_millis: int = 0,
+    ) -> None:
+        """Publish a protobuf ``RiskSignal`` to the `risk-signals` topic, keyed by account_id so the
+        gateway keeps one current gate per account. ``kind``/``action`` are the proto enum *names*
+        (e.g. "RISK_EXPOSURE", "REJECT"); we map them to enum values via the lazily-imported stub,
+        preserving import-safety. No-op if not connected."""
         if not self._connected or self._producer is None:
             return
         try:
+            from app.genproto import openexchange_pb2 as pb  # lazy import: preserves import-safety
+
+            sig = pb.RiskSignal(
+                kind=getattr(pb, kind, pb.SIGNAL_KIND_UNSPECIFIED),
+                account_id=account_id,
+                symbol=symbol,
+                score=float(score),
+                action=getattr(pb, action, pb.SIGNAL_ACTION_UNSPECIFIED),
+                reason=reason,
+                ts_millis=int(ts_millis),
+            )
             self._producer.produce(
                 settings.topic_signals,
-                key=str(signal_obj.get("account_id", "")).encode(),
-                value=json.dumps(signal_obj).encode(),
+                key=account_id.encode(),
+                value=sig.SerializeToString(),
             )
             self._producer.poll(0)
         except Exception as exc:  # never let publishing crash the loop

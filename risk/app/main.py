@@ -129,16 +129,15 @@ def score_order(req: ScoreOrderRequest) -> ScoreOrderResponse:
         is_cancel=False,
     )
 
-    # Emit a risk signal for the gateway / dashboard (no-op if Kafka isn't connected).
+    # Emit an ANOMALY risk signal for the gateway / dashboard (no-op if Kafka isn't connected).
     consumer.publish_signal(
-        {
-            "type": "order-anomaly",
-            "account_id": req.account_id,
-            "client_order_id": req.client_order_id,
-            "symbol": req.symbol,
-            "anomaly_score": anomaly_score,
-            "decision": decision,
-        }
+        account_id=req.account_id,
+        kind="ANOMALY",
+        action=("REJECT" if decision == "REJECT" else "ALLOW"),
+        score=anomaly_score,
+        symbol=req.symbol,
+        reason="; ".join(reasons),
+        ts_millis=req.ts_millis,
     )
 
     return ScoreOrderResponse(

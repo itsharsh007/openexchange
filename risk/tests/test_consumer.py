@@ -133,3 +133,78 @@ def test_decode_protobuf_order_updates_stats(monkeypatch):
     stats = fresh.order_stats("a1")
     assert stats.submits == 1
     assert list(stats.sizes) == [12.0]
+
+
+class _FakeProducer:
+    """Captures produced records so we can assert on the wire bytes without a broker."""
+
+    def __init__(self) -> None:
+        self.produced: list[tuple[str, bytes, bytes]] = []
+
+    def produce(self, topic, key=None, value=None):
+        self.produced.append((topic, key, value))
+
+    def poll(self, *_):
+        pass
+
+
+def test_trade_breach_publishes_reject_signal(monkeypatch):
+    """A fill that pushes an account over its position cap must publish a protobuf RiskSignal
+    with action=REJECT, keyed by account_id — the signal the gateway gates on."""
+    pb = pytest.importorskip("app.genproto.openexchange_pb2", reason="run `make proto-python`")
+
+    fresh = FeatureStore()
+    import app.kafka_consumer as kc
+    monkeypatch.setattr(kc, "store", fresh)
+
+    c = RiskConsumer()
+    # Tiny limit so a single small fill breaches it; wire in a fake (connected) producer.
+    from dataclasses import replace
+    from app.models.risk import RiskScorer
+    c._scorer = RiskScorer(limits=replace(settings.limits, max_position_per_symbol=1))
+    prod = _FakeProducer()
+    c._producer = prod
+    c._connected = True
+
+    c.handle_message(
+        settings.topic_trades,
+        {"symbol": "ABC", "price_ticks": 10_000, "quantity": 5,
+         "buy_account_id": "acct-buy", "sell_account_id": "acct-sell"},
+    )
+
+    # Both sides moved; both breach the cap of 1 share -> two REJECT signals.
+    assert len(prod.produced) == 2
+    topics = {t for t, _k, _v in prod.produced}
+    assert topics == {settings.topic_signals}
+    by_key = {k.decode(): pb.RiskSignal.FromString(v) for _t, k, v in prod.produced}
+    assert set(by_key) == {"acct-buy", "acct-sell"}
+    for acct, sig in by_key.items():
+        assert sig.account_id == acct
+        assert sig.action == pb.REJECT
+        assert sig.kind == pb.RISK_EXPOSURE
+        assert "exceeds cap" in sig.reason
+
+
+def test_order_within_limits_publishes_allow_signal(monkeypatch):
+    """An order that breaches nothing publishes an ALLOW signal (which clears any prior block)."""
+    pb = pytest.importorskip("app.genproto.openexchange_pb2", reason="run `make proto-python`")
+
+    fresh = FeatureStore()
+    import app.kafka_consumer as kc
+    monkeypatch.setattr(kc, "store", fresh)
+
+    c = RiskConsumer()
+    prod = _FakeProducer()
+    c._producer = prod
+    c._connected = True
+
+    c.handle_message(
+        settings.topic_orders,
+        {"account_id": "a1", "symbol": "ABC", "quantity": 1, "ts_millis": 1000, "is_cancel": False},
+    )
+
+    assert len(prod.produced) == 1
+    _t, k, v = prod.produced[0]
+    sig = pb.RiskSignal.FromString(v)
+    assert k.decode() == "a1"
+    assert sig.action == pb.ALLOW
