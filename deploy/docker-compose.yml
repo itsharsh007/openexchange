@@ -132,7 +132,8 @@ services:
     ports:
       - "8000:8000"   # FastAPI REST + /metrics
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/healthz || exit 1"]
+      # python:3.12-slim has no wget; use the interpreter (always present) to probe.
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/healthz').status==200 else 1)"]
       interval: 15s
       timeout: 5s
       retries: 10
