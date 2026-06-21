@@ -1,5 +1,8 @@
 # OpenExchange
 
+[![CI](https://github.com/itsharsh007/openexchange/actions/workflows/ci.yml/badge.svg)](https://github.com/itsharsh007/openexchange/actions/workflows/ci.yml)
+[![Docker](https://github.com/itsharsh007/openexchange/actions/workflows/docker.yml/badge.svg)](https://github.com/itsharsh007/openexchange/actions/workflows/docker.yml)
+
 A polyglot, real-time **simulated trading exchange**. Orders flow from a React dashboard through a
 Go API gateway into a Java matching engine, which matches them with price-time priority, streams
 trades over WebSockets, persists a double-entry ledger in Postgres, and feeds a Python ML service
@@ -63,6 +66,30 @@ make up        # start infra (Postgres, Redis, Kafka) + services
 make seed      # create demo accounts/symbols and simulated order flow
 make test      # run every service's test suite
 make down      # stop everything
+```
+
+## Live demo
+
+| Surface | URL |
+|---|---|
+| Dashboard (React) | https://itsharsh007.github.io/openexchange |
+| Gateway API | https://openexchange-gateway.koyeb.app/healthz |
+| WebSocket feed | wss://openexchange-gateway.koyeb.app/ws |
+
+The gateway runs in `ENGINE_MODE=mock` — REST + WebSocket fully live, no Java engine needed.
+Kafka, Postgres, and the risk service run locally; see the demo video in [`docs/`](docs/).
+
+Deploy your own: [`docs/cloud-deploy.md`](docs/cloud-deploy.md) (no credit card required).
+
+## Docker images (GHCR)
+
+Every merge to `main` publishes four images to GitHub Container Registry:
+
+```
+ghcr.io/itsharsh007/openexchange-engine:latest
+ghcr.io/itsharsh007/openexchange-gateway:latest
+ghcr.io/itsharsh007/openexchange-risk:latest
+ghcr.io/itsharsh007/openexchange-web:latest
 ```
 
 See [`docs/`](docs/) for architecture, ADRs, the Twelve-Factor compliance map, the going-public

@@ -1,6 +1,6 @@
 COMPOSE := docker compose -f deploy/docker-compose.yml
 
-.PHONY: help up infra down seed test logs colima-start colima-stop fmt proto proto-python
+.PHONY: help up infra down seed test logs colima-start colima-stop fmt proto proto-python deploy-web
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -54,6 +54,11 @@ test: ## Run every service's test suite
 	cd gateway && go test ./...
 	cd risk && pytest -q
 	cd web && npm test --silent
+
+deploy-web: ## Build and push web to GitHub Pages (set VITE_API_BASE + VITE_WS_URL first)
+	cd web && npm ci && \
+	VITE_API_BASE=$(VITE_API_BASE) VITE_WS_URL=$(VITE_WS_URL) npm run build
+	@echo "Upload web/dist to GitHub Pages (or push to main to trigger the workflow)"
 
 fmt: ## Format code in every service
 	cd engine && ./gradlew spotlessApply || true

@@ -1,0 +1,67 @@
+# OpenExchange gateway — Koyeb deploy config.
+#
+# No credit card required. Free tier: 1 service, 512 MB, 2 shared vCPUs, no sleep.
+#
+# Quickest path (dashboard — recommended for first deploy):
+#   1. Sign up at koyeb.com (GitHub login, no card)
+#   2. New Service → GitHub → pick this repo → branch: main
+#   3. Builder: Dockerfile  |  context: gateway/  |  file: gateway/Dockerfile
+#   4. Port: 8080  |  Protocol: HTTP
+#   5. Env vars:
+#        ENGINE_MODE = mock
+#        PORT        = 8080
+#        JWT_SECRET  = <paste from: openssl rand -hex 32>
+#   6. Deploy → live at https://<app>.koyeb.app
+#
+# CLI path (after `npm i -g koyeb-cli` and `koyeb login`):
+#   koyeb app create openexchange
+#   koyeb service create gateway \
+#     --app openexchange \
+#     --git github.com/itsharsh007/openexchange \
+#     --git-branch main \
+#     --dockerfile gateway/Dockerfile \
+#     --build-context gateway \
+#     --port 8080:http \
+#     --env ENGINE_MODE=mock \
+#     --env PORT=8080 \
+#     --secret JWT_SECRET=<value> \
+#     --region fra \
+#     --instance-type nano \
+#     --min-scale 1 \
+#     --max-scale 1
+#
+# After deploy, set VITE_API_BASE + VITE_WS_URL in GitHub repo vars (for Pages build):
+#   VITE_API_BASE = https://<app>.koyeb.app
+#   VITE_WS_URL   = wss://<app>.koyeb.app/ws
+
+name: openexchange
+
+services:
+  - name: gateway
+    git:
+      repository: github.com/itsharsh007/openexchange
+      branch: main
+    build:
+      builder: dockerfile
+      dockerfile: gateway/Dockerfile
+      context: gateway
+    ports:
+      - port: 8080
+        protocol: http
+    env:
+      - key: ENGINE_MODE
+        value: mock
+      - key: PORT
+        value: "8080"
+      - key: JWT_SECRET
+        secret: true    # set via dashboard / CLI --secret flag, never committed
+    health_checks:
+      - protocol: http
+        path: /healthz
+        port: 8080
+    scaling:
+      min: 1
+      max: 1
+    regions:
+      - fra             # Frankfurt — best latency from India on free tier
+    instance_type: nano
