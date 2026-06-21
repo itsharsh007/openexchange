@@ -1,4 +1,4 @@
-import { API_BASE } from "../config";
+import { API_BASE, DEMO_TOKEN } from "../config";
 import type {
   BookSnapshot,
   CancelOrder,
@@ -34,7 +34,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: {
       "Content-Type": "application/json",
-      // TODO: attach `Authorization: Bearer <jwt>` once auth lands on the gateway.
+      ...(DEMO_TOKEN ? { Authorization: `Bearer ${DEMO_TOKEN}` } : {}),
       ...(init?.headers ?? {}),
     },
   });
@@ -74,6 +74,5 @@ export function cancelOrder(cancel: CancelOrder): Promise<OrderAck> {
 
 /** Fetch a one-shot order-book snapshot (used to seed the ladder before WS). */
 export function getBook(symbol: string, depth = 20): Promise<BookSnapshot> {
-  const qs = new URLSearchParams({ symbol, depth: String(depth) });
-  return request<BookSnapshot>(`/book?${qs.toString()}`);
+  return request<BookSnapshot>(`/book/${encodeURIComponent(symbol)}?depth=${depth}`);
 }

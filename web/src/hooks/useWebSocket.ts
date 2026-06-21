@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { WS_URL } from "../config";
+import { DEMO_TOKEN, WS_URL } from "../config";
 import type {
   ClientMessage,
   ConnectionState,
@@ -95,7 +95,8 @@ export function useWebSocket(opts: UseWebSocketOptions): UseWebSocketResult {
     const connect = () => {
       setConnectionState(retryRef.current === 0 ? "connecting" : "reconnecting");
 
-      const ws = new WebSocket(WS_URL);
+      const url = DEMO_TOKEN ? `${WS_URL}?token=${encodeURIComponent(DEMO_TOKEN)}` : WS_URL;
+      const ws = new WebSocket(url);
       wsRef.current = ws;
 
       ws.onopen = () => {

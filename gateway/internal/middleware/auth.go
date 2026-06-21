@@ -71,6 +71,11 @@ func bearerToken(r *http.Request) string {
 	if len(h) > len(prefix) && strings.EqualFold(h[:len(prefix)], prefix) {
 		return h[len(prefix):]
 	}
+	// WebSocket upgrades can't set custom headers in the browser, so we also
+	// accept the token as a ?token= query param (WS-only path).
+	if t := r.URL.Query().Get("token"); t != "" {
+		return t
+	}
 	return ""
 }
 

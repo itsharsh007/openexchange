@@ -10,6 +10,9 @@
 
 export const API_BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8080";
 export const WS_URL = import.meta.env.VITE_WS_URL ?? "ws://localhost:8080/ws";
+// Local dev token — set VITE_DEMO_TOKEN in web/.env.local (git-ignored).
+// In production this comes from a real auth flow.
+export const DEMO_TOKEN: string = import.meta.env.VITE_DEMO_TOKEN ?? "";
 
 // Tick → price convention.
 // ---------------------------------------------------------------------------

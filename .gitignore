@@ -9,6 +9,7 @@ engine/build/
 
 # Go
 gateway/bin/
+gateway/gateway
 gateway/*.test
 
 # Python

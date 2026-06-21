@@ -364,3 +364,46 @@ trade-off: the risk loop is async and the gate only applies from the next signal
 self-clearing after 60 seconds (velocity window expiry) also behaves as designed.
 
 <!-- Append new entries below as Phase 4 (React dashboard) / Phase 5 (infra+observability) land. -->
+
+---
+
+## 2026-06-21 — Wiring the dashboard to the gateway (4 real fixes)
+
+Ran the gateway in `ENGINE_MODE=mock` + the Vite dev server and clicked through the UI. Four
+genuine bugs surfaced — all needed in production too, not just locally:
+
+- **CORS middleware** (`internal/middleware/cors.go`): the browser's preflight `OPTIONS`
+  request was rejected, so `POST /orders` from `localhost:5173` → `localhost:8080` failed with
+  "network error". Added `Access-Control-Allow-Origin` + `OPTIONS → 204`, wrapping all routes
+  in `main.go`. (Origin is `*` for now; pin to the real frontend domain in production.)
+- **WS token via query param** (`internal/middleware/auth.go`): the browser WebSocket API
+  can't set custom headers, so the dashboard had no way to send `Authorization: Bearer`.
+  `bearerToken()` now falls back to a `?token=<jwt>` query param for the WS upgrade path.
+- **Book URL** (`web/src/api/client.ts`): the frontend called `/book?symbol=ACME` but the
+  gateway route is `/book/{symbol}`. Fixed to `/book/ACME?depth=20` (was a hard 404).
+- **Frontend auth** (`web/src/hooks/useWebSocket.ts`, `api/client.ts`, `config.ts`): the REST
+  client had a `TODO: attach Authorization` and was sending nothing. Now a `DEMO_TOKEN` (from
+  git-ignored `web/.env.local`) is appended to the WS URL and sent as `Authorization: Bearer`
+  on REST calls. NOTE: `DEMO_TOKEN` is a dev stand-in — production needs a real login flow that
+  mints short-lived tokens. The plumbing is correct; only the token *source* is a stub.
+
+**On the empty Trades / Risk panels in mock mode:** these are fed in production by the *real*
+Kafka consumers — `tape.TradeConsumer` (engine → `trades` topic → WS) and `risksignal.Consumer`
+(Python → `risk-signals` topic → WS) — both already wired in `main.go` and emitting the exact
+WS envelopes the dashboard expects (`{type:"trade",data}` / `{type:"risk",data}`). They only
+light up with the full stack (`make up`). We briefly added an in-memory matching engine + a
+risk simulator to the Go mock so these panels would fill without Docker, then **reverted both**:
+duplicating the Java engine and the Python risk service inside the gateway's mock muddied the
+project's core story (the Java engine *is* the matching engine) and added untested money-path
+code. The honest demo is `make up` — real engine, real Kafka, real fills.
+
+**How to run locally:**
+
+```bash
+# Order book, order entry, live WS, risk gate — no Docker:
+cd ~/openexchange/gateway && JWT_SECRET=localsecret ENGINE_MODE=mock go run ./cmd/gateway
+cd ~/openexchange/web && npm run dev    # http://localhost:5173
+
+# Trades + Risk panels (full real-time path): the Docker stack
+make up && make seed
+```
