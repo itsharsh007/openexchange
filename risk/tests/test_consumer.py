@@ -14,12 +14,16 @@ from app.store import FeatureStore
 import app.store as store_module
 
 
-def test_consumer_imports_without_kafka():
+def test_consumer_imports_without_kafka(monkeypatch):
     # Constructing the consumer must not connect or require confluent-kafka.
     c = RiskConsumer()
     assert c is not None
-    # run() on a box with no Kafka should return quickly without raising.
-    c.run()  # _connect() fails gracefully -> returns
+    # When the broker is unreachable, _connect() returns False and run() must return
+    # immediately rather than entering the blocking poll loop. We force the no-broker
+    # path deterministically — otherwise this test hangs wherever a broker *is*
+    # reachable (CI with a Kafka service, or the full local stack).
+    monkeypatch.setattr(c, "_connect", lambda: False)
+    c.run()  # returns fast — no broker
 
 
 def test_handle_trade_updates_store(monkeypatch):
