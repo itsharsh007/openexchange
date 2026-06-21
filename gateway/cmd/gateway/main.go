@@ -127,7 +127,7 @@ func main() {
 
 	httpServer := &http.Server{
 		Addr:              cfg.ListenAddr,
-		Handler:           middleware.CORS("*")(srv.Routes(rl, auth)),
+		Handler:           middleware.CORS(cfg.CORSAllowedOrigin)(srv.Routes(rl, auth)),
 		ReadHeaderTimeout: 5 * time.Second, // mitigate Slowloris
 	}
 

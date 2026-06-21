@@ -29,6 +29,10 @@ type Config struct {
 	RedisAddr string
 	// JWTSecret is the HMAC secret used to verify bearer tokens.
 	JWTSecret string
+	// CORSAllowedOrigin is the value sent in Access-Control-Allow-Origin. Defaults
+	// to "*" for local dev; pin it to the real dashboard origin in production so the
+	// browser only honors cross-origin calls from the trusted frontend.
+	CORSAllowedOrigin string
 
 	// RateLimitPerSecond is the sustained token-bucket refill rate per client.
 	RateLimitPerSecond float64
@@ -73,12 +77,19 @@ func Load() (*Config, []string) {
 			"JWT_SECRET is the insecure dev default; set a strong secret before exposing the gateway")
 	}
 
+	corsOrigin := getenv("CORS_ALLOWED_ORIGIN", "*")
+	if corsOrigin == "*" {
+		warnings = append(warnings,
+			"CORS_ALLOWED_ORIGIN is '*' (any site); pin it to the dashboard origin before exposing the gateway")
+	}
+
 	cfg := &Config{
 		ListenAddr:         ":" + port,
 		EngineGRPCAddr:     getenv("ENGINE_GRPC_ADDR", "localhost:50051"),
 		EngineMode:         getenv("ENGINE_MODE", "grpc"),
 		RedisAddr:          getenv("REDIS_ADDR", "localhost:6379"),
 		JWTSecret:          jwtSecret,
+		CORSAllowedOrigin:  corsOrigin,
 		RateLimitPerSecond: getenvFloat("RATE_LIMIT_RPS", 20),
 		RateLimitBurst:     getenvInt("RATE_LIMIT_BURST", 40),
 		EngineTimeout:      getenvDuration("ENGINE_TIMEOUT", 3*time.Second),
