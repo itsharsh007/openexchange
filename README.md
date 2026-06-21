@@ -63,6 +63,24 @@ React dashboard ──WS/REST──> Go gateway ──gRPC──> Java matching 
 6. The Python service consumes the stream, updates features, scores risk/anomaly, and can signal
    the gateway to reject orders that breach limits.
 
+## Performance & resilience
+
+Measured on a 4-core Linux box with the full stack up (real engine, Kafka, Postgres),
+`hey` at 50 concurrent connections for 20s per path:
+
+| Path | Throughput | Avg latency | Slowest |
+|---|---|---|---|
+| `GET /book/{symbol}` (read, Redis-cached) | **~17,800 req/s** | 2.8 ms | 264 ms |
+| `POST /orders` (write, gRPC → engine) | **~15,800 req/s** | 3.2 ms | 44 ms |
+
+**Resilience** (`scripts/chaostest.sh`) — killing the engine mid-flight:
+
+- Orders return a clean `502` (the gateway never crashes); `/healthz` stays `200` (degraded, not dead).
+- The Postgres ledger is untouched and stays **balanced** (every asset nets to 0) throughout.
+- On engine restart the gateway recovers automatically — orders return `201` again, ledger still balanced.
+
+Reproduce: `make up && make seed`, then `./scripts/loadtest.sh` and `./scripts/chaostest.sh`.
+
 ## Quick start (local)
 
 ```bash

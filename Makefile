@@ -55,6 +55,12 @@ test: ## Run every service's test suite
 	cd risk && pytest -q
 	cd web && npm test --silent
 
+loadtest: ## Load test the gateway (read + write paths) — records throughput/latency
+	./scripts/loadtest.sh
+
+chaostest: ## Resilience test — kill the engine mid-flight, prove graceful degrade + recovery
+	./scripts/chaostest.sh
+
 deploy-web: ## Build and push web to GitHub Pages (set VITE_API_BASE + VITE_WS_URL first)
 	cd web && npm ci && \
 	VITE_API_BASE=$(VITE_API_BASE) VITE_WS_URL=$(VITE_WS_URL) npm run build
