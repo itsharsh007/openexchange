@@ -109,7 +109,9 @@ services:
     ports:
       - "8080:8080"   # REST + WebSocket + /metrics
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz || exit 1"]
+      # The runtime image is distroless (no shell/wget); the gateway binary has a
+      # built-in `healthcheck` subcommand that probes /healthz and exits 0/1.
+      test: ["CMD", "/gateway", "healthcheck"]
       interval: 10s
       timeout: 3s
       retries: 10

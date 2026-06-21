@@ -31,6 +31,23 @@ import (
 )
 
 func main() {
+	// Self-healthcheck mode: `gateway healthcheck` GETs /healthz and exits 0/1.
+	// WHY: the runtime image is distroless (no shell, no wget/curl), so the
+	// container HEALTHCHECK invokes this same static binary instead of an external
+	// tool. Reads PORT (default 8080) to match the listen address.
+	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
+		port := os.Getenv("PORT")
+		if port == "" {
+			port = "8080"
+		}
+		client := &http.Client{Timeout: 2 * time.Second}
+		resp, err := client.Get("http://localhost:" + port + "/healthz")
+		if err != nil || resp.StatusCode != http.StatusOK {
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
 	log.SetFlags(log.LstdFlags | log.Lmsgprefix)
 	log.SetPrefix("gateway: ")
 
