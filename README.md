@@ -14,12 +14,18 @@ that predicts short-term price moves and flags anomalous / risky order flow.
 > 🧒 New here? Read [**OpenExchange explained like you're 10**](docs/explain-like-im-10.md) for the
 > no-jargon version before diving into the architecture.
 
-## Why this project
+## What it demonstrates
 
-It's built to exercise — and let me explain at length — the full surface of modern backend
-reviews: data structures (order books), concurrency (a single-writer matching engine),
-distributed systems (event streaming, multiple services), databases, caching, low-latency
-networking, machine learning, a real-time frontend, and full DevOps.
+OpenExchange is a from-scratch implementation of the hard parts of an exchange, chosen to cover the
+full surface of modern backend engineering in one coherent system:
+
+- **Data structures** — a per-symbol limit order book with price-time priority.
+- **Concurrency** — a single-writer matching engine (no cross-symbol shared mutable state).
+- **Distributed systems** — event streaming over Kafka across four independent services.
+- **Storage & caching** — a double-entry Postgres ledger with a Redis hot-book cache.
+- **Real-time networking** — WebSocket fan-out of trades and book updates.
+- **Machine learning** — short-horizon price prediction plus anomaly / risk scoring.
+- **DevOps** — containerized services, CI, metrics, and dashboards.
 
 ## Architecture
 
@@ -45,9 +51,9 @@ React dashboard ──WS/REST──> Go gateway ──gRPC──> Java matching 
 | `deploy/`  | Docker Compose, K8s, Grafana | Local + cloud orchestration |
 | `proto/`   | Protobuf | Shared service contracts |
 
-## The order lifecycle (the story to tell in an review)
+## How an order flows through the system
 
-1. User submits a limit order in the React UI.
+1. A user submits a limit order in the React UI.
 2. Go gateway authenticates (JWT), rate-limits, validates, and forwards via gRPC.
 3. Java engine places it in the per-symbol order book; if it crosses, it matches with
    **price-time priority** and produces one or more trades.
@@ -92,8 +98,8 @@ ghcr.io/itsharsh007/openexchange-risk:latest
 ghcr.io/itsharsh007/openexchange-web:latest
 ```
 
-See [`docs/`](docs/) for architecture, ADRs, the Twelve-Factor compliance map, the going-public
-roadmap, and per-service review deep-dive.
+See [`docs/`](docs/) for architecture, ADRs, the Twelve-Factor compliance map, the deployment
+roadmap, and per-service deep-dives.
 
 ## License
 
