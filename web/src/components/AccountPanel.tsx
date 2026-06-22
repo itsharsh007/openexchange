@@ -25,6 +25,9 @@ export function AccountPanel({
   onReconcile,
 }: AccountPanelProps) {
   const openOrders = orders.filter((o) => OPEN_STATUSES.has(o.status));
+  // Defensive: the API may omit positions (or send null) for a fresh account —
+  // never call .map on a non-array, which would blank the whole dashboard.
+  const positions = account.positions ?? [];
   const totalPnl =
     account.realizedPnlTicks + account.unrealizedPnlTicks;
 
@@ -77,7 +80,7 @@ export function AccountPanel({
 
       <h3 className={styles.subhead}>Positions</h3>
       <ul className={styles.positions}>
-        {account.positions.map((p) => (
+        {positions.map((p) => (
           <li key={p.symbol}>
             <span>{p.symbol}</span>
             <span className={p.quantity >= 0 ? styles.up : styles.down}>
@@ -86,7 +89,7 @@ export function AccountPanel({
             <span>@ {ticksToPrice(p.avgPriceTicks)}</span>
           </li>
         ))}
-        {account.positions.length === 0 && (
+        {positions.length === 0 && (
           <li className={styles.muted}>flat</li>
         )}
       </ul>

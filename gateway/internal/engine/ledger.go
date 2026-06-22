@@ -105,7 +105,8 @@ func (e *LocalEngine) GetAccount(ctx context.Context, accountID string) (Account
 
 	a, ok := e.accounts[accountID]
 	if !ok {
-		return AccountSnapshot{AccountID: accountID, CashTicks: startingCashTicks}, nil
+		// Always return an empty (not nil) slice so it marshals as [] not null.
+		return AccountSnapshot{AccountID: accountID, CashTicks: startingCashTicks, Positions: []PositionView{}}, nil
 	}
 
 	var unrealized int64
