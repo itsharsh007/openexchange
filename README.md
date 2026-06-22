@@ -108,8 +108,8 @@ make down      # stop everything
 
 | | What you get | Setup |
 |---|---|---|
-| **▶ [Live dashboard](https://itsharsh007.github.io/openexchange/)** | The UI, live — auth, order book, order entry (mock engine: orders ack but don't match) | none, just click |
-| **🚀 [Open in Codespaces](https://codespaces.new/itsharsh007/openexchange)** | The **full real system** — Java matching engine, Kafka, Postgres, the ML risk loop | one click, then `make up && make seed` (~3 min) |
+| **▶ [Live dashboard](https://itsharsh007.github.io/openexchange/)** | A **real shared exchange** — your orders match against other visitors live (price-time priority, in-gateway engine). Open it in two tabs and trade with yourself, or send the link to a friend. | none, just click |
+| **🚀 [Open in Codespaces](https://codespaces.new/itsharsh007/openexchange)** | The **full system** — the Java matching engine, Kafka, Postgres, and the ML risk loop | one click, then `make up && make seed` (~3 min) |
 
 After the Codespace boots, run `make up && make seed`, open the forwarded port **5173**, and place a
 **BUY** and a crossing **SELL** — you'll see them match, a trade print on the tape, and the Risk/ML
@@ -123,8 +123,10 @@ panel react. That's the whole system end-to-end.
 | Gateway API | https://openexchange.onrender.com/healthz |
 | WebSocket feed | wss://openexchange.onrender.com/ws |
 
-The hosted gateway runs in `ENGINE_MODE=mock` (REST + WebSocket fully live, no JVM/Kafka needed) on
-Render's free tier — the first request after ~15 min idle takes ~1 min to wake.
+The hosted gateway runs a **real in-process matching engine** (`ENGINE_MODE=local`) so the live link
+is a genuine shared exchange — no JVM/Kafka needed. The heavier services (Kafka, Postgres, the ML
+risk loop) only run in the full stack. On Render's free tier the first request after ~15 min idle
+takes ~1 min to wake.
 
 Deploy your own: [`docs/cloud-deploy.md`](docs/cloud-deploy.md) (no credit card required).
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { getBook } from "./api/client";
-import { ensureSession } from "./api/session";
+import { ensureSession, demoAccountId } from "./api/session";
 import { OrderBook } from "./components/OrderBook";
 import { TradeTape } from "./components/TradeTape";
 import { OrderEntry } from "./components/OrderEntry";
@@ -46,6 +46,9 @@ export default function App() {
   // Gate REST/WS until we hold a bearer token. The public dashboard fetches an
   // anonymous demo session from the gateway; locally a build-time token may exist.
   const [authReady, setAuthReady] = useState(false);
+  // The account this browser trades as — unique per session, so two visitors are
+  // distinct traders whose orders cross. Falls back to the constant until ready.
+  const [accountId, setAccountId] = useState(ACCOUNT_ID);
 
   // ── Blotter mutation helpers (optimistic add + reconcile) ──────────────────
   const addOptimistic = useCallback((order: TrackedOrder) => {
@@ -106,7 +109,10 @@ export default function App() {
   // ── Obtain a bearer token before any authenticated call. Runs once on mount.
   useEffect(() => {
     ensureSession()
-      .then(() => setAuthReady(true))
+      .then(() => {
+        setAccountId(demoAccountId() || ACCOUNT_ID);
+        setAuthReady(true);
+      })
       .catch((err) => console.error("[auth] could not obtain demo session", err));
   }, []);
 
@@ -122,7 +128,10 @@ export default function App() {
     });
   }, [authReady]);
 
-  const account = useMemo(() => MOCK_ACCOUNT, []);
+  const account = useMemo(
+    () => ({ ...MOCK_ACCOUNT, accountId }),
+    [accountId],
+  );
 
   return (
     <div className={styles.app}>
@@ -142,7 +151,7 @@ export default function App() {
         </div>
         <div className={styles.card}>
           <OrderEntry
-            accountId={ACCOUNT_ID}
+            accountId={accountId}
             symbol={SYMBOL}
             onOptimisticAdd={addOptimistic}
             onReconcile={reconcile}

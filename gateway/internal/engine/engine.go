@@ -65,11 +65,17 @@ type CancelOrder struct {
 }
 
 // OrderAck mirrors proto OrderAck.
+//
+// Trades carries the executions this order produced, newest-relevant first. It is
+// populated by the in-process LocalEngine so the gateway can fan them out to every
+// dashboard's trade tape. The gRPC path leaves it empty — there, the engine streams
+// trades over Kafka and internal/tape broadcasts them instead.
 type OrderAck struct {
 	OrderID        string      `json:"orderId"`
 	Status         OrderStatus `json:"status"`
 	FilledQuantity int64       `json:"filledQuantity"`
 	Reason         string      `json:"reason,omitempty"`
+	Trades         []Trade     `json:"trades,omitempty"`
 }
 
 // PriceLevel mirrors proto PriceLevel.

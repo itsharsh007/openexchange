@@ -13,11 +13,17 @@ import { API_BASE, DEMO_TOKEN } from "../config";
 // one once. The in-flight promise is cached so concurrent callers share a fetch.
 
 let token = DEMO_TOKEN;
+let accountId = "";
 let inflight: Promise<string> | null = null;
 
 /** The current bearer token, or "" if none has been obtained yet. */
 export function authToken(): string {
   return token;
+}
+
+/** The demo account this session trades as (set once a session is obtained). */
+export function demoAccountId(): string {
+  return accountId;
 }
 
 interface DemoSession {
@@ -38,6 +44,7 @@ export async function ensureSession(): Promise<string> {
     if (!res.ok) throw new Error(`demo auth failed: HTTP ${res.status}`);
     const data = (await res.json()) as DemoSession;
     token = data.token;
+    accountId = data.accountId;
     return token;
   })();
   try {

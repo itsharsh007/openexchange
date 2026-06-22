@@ -145,18 +145,25 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 	// it runs only after the engine has acked and never affects this response.
 	s.orders.PublishSubmit(o, ack)
 
-	// Push a fresh book snapshot to all WS clients so the ladder updates
-	// immediately after an order touches the book. Done in a goroutine so it
-	// never delays the HTTP response. Best-effort: engine/cache errors are
-	// logged and ignored.
-	go s.broadcastBook(o.Symbol)
-
-	// NOTE: the real-time trade tape is NOT synthesized here anymore. Every
-	// executed trade — including the resting (maker) side that never called this
-	// gateway — is published by the engine to the Kafka `trades` topic and fanned
-	// out to all dashboards by internal/tape.TradeConsumer. Synthesizing a trade
-	// from this one submitter's ack would miss the maker side and could disagree
-	// with the engine's authoritative price.
+	// Fan out to all dashboards: any executions this order produced, then a fresh
+	// book snapshot. Done in a goroutine so it never delays the HTTP response.
+	//
+	// WHY broadcast trades here: with the real gRPC engine, every trade (including
+	// the resting maker side that never called this gateway) arrives on the Kafka
+	// `trades` topic and internal/tape fans it out — so ack.Trades is empty and
+	// this loop is a no-op. With the in-process LocalEngine there is no Kafka, so
+	// the engine returns the executions in the ack and we broadcast them, which is
+	// what lets the maker's browser see the fill in a multiplayer session.
+	go func(trades []engine.Trade, symbol string) {
+		for _, t := range trades {
+			s.hub.Broadcast(struct {
+				Type string       `json:"type"`
+				Data engine.Trade `json:"data"`
+			}{Type: "trade", Data: t})
+			metrics.TradesBroadcastTotal.Inc()
+		}
+		s.broadcastBook(symbol)
+	}(ack.Trades, o.Symbol)
 
 	status := http.StatusCreated
 	if ack.Status == engine.StatusRejected {
@@ -260,9 +267,13 @@ func (s *Server) broadcastBook(symbol string) {
 // signed, expiring token rather than a static secret baked into the frontend.
 // A login-backed issuer would slot in here unchanged — same token shape.
 func (s *Server) handleDemoSession(w http.ResponseWriter, r *http.Request) {
+	// A unique account per session so each browser is a distinct trader — that's
+	// what makes "trade with others" real: two visitors get different accounts and
+	// their orders cross in the shared book.
+	account := engine.NewDemoAccountID(s.cfg.DemoAccountID)
 	exp := time.Now().Add(s.cfg.DemoSessionTTL)
 	claims := jwt.RegisteredClaims{
-		Subject:   s.cfg.DemoAccountID,
+		Subject:   account,
 		ExpiresAt: jwt.NewNumericDate(exp),
 		IssuedAt:  jwt.NewNumericDate(time.Now()),
 	}
@@ -273,7 +284,7 @@ func (s *Server) handleDemoSession(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"token":            signed,
-		"accountId":        s.cfg.DemoAccountID,
+		"accountId":        account,
 		"expiresInSeconds": int(s.cfg.DemoSessionTTL.Seconds()),
 	})
 }

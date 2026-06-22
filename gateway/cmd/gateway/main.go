@@ -60,9 +60,12 @@ func main() {
 	// Engine client: real gRPC adapter to the Java matching engine, or an in-process
 	// mock (ENGINE_MODE=mock) so the gateway can run standalone for demos/local dev.
 	var eng engine.EngineClient
-	if cfg.EngineMode == "mock" {
-		eng = engine.NewMockClient()
-		log.Printf("engine: MOCK client (ENGINE_MODE=mock) — no real matching")
+	if cfg.EngineMode == "mock" || cfg.EngineMode == "local" {
+		// In-process matching engine: a real, shared limit order book so the gateway
+		// runs a multiplayer exchange standalone (no JVM/Kafka). Seeded with starter
+		// liquidity for the demo symbols so the first visitor sees a populated book.
+		eng = engine.NewLocalEngine("AAPL", "TSLA", "MSFT")
+		log.Printf("engine: LOCAL in-process matching engine (ENGINE_MODE=%s) — real matching, seeded book", cfg.EngineMode)
 	} else {
 		// grpc.NewClient is lazy, so this does not block on a live engine — each RPC
 		// carries a per-call deadline (cfg.EngineTimeout) enforced by the handlers.

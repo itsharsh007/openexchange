@@ -10,7 +10,7 @@
 #   3. Language: Docker | Root Directory: gateway | Dockerfile Path: Dockerfile
 #   4. Region: Frankfurt | Instance: Free | Health Check Path: /healthz
 #   5. Env vars:
-#        ENGINE_MODE         = mock
+#        ENGINE_MODE         = local   (real in-process matching engine; "mock" is an alias)
 #        PORT                = 8080
 #        CORS_ALLOWED_ORIGIN = https://itsharsh007.github.io
 #        JWT_SECRET          = <paste from: openssl rand -hex 32>
@@ -38,7 +38,7 @@ services:
     autoDeploy: true
     envVars:
       - key: ENGINE_MODE
-        value: mock
+        value: local   # real in-process matching engine (no JVM/Kafka); "mock" is an alias
       - key: PORT
         value: "8080"
       # Pin CORS to the GitHub Pages dashboard origin (scheme+host, no path) so the

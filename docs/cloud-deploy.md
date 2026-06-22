@@ -30,7 +30,7 @@ Go to [render.com](https://render.com) → **Get Started** → "Sign in with Git
 4. Region: **Frankfurt** | Instance Type: **Free** | Health Check Path: `/healthz`
 5. Environment variables:
    ```
-   ENGINE_MODE         = mock
+   ENGINE_MODE         = local
    PORT                = 8080
    CORS_ALLOWED_ORIGIN = https://itsharsh007.github.io
    JWT_SECRET          = <paste: openssl rand -hex 32>

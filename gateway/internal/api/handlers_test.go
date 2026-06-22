@@ -109,11 +109,12 @@ func TestDemoSessionMintsAcceptedToken(t *testing.T) {
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if resp.Token == "" || resp.AccountID != "acct-demo-1" || resp.ExpiresInSeconds != 3600 {
+	if resp.Token == "" || !strings.HasPrefix(resp.AccountID, "acct-demo-1") || resp.ExpiresInSeconds != 3600 {
 		t.Fatalf("unexpected demo session: %+v", resp)
 	}
 
-	// The token must authenticate against the same secret and carry the account.
+	// The token must authenticate against the same secret and carry the (unique)
+	// account it was minted for.
 	auth := middleware.NewJWTAuth(secret)
 	var gotAccount string
 	h := auth.Middleware(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
@@ -122,8 +123,8 @@ func TestDemoSessionMintsAcceptedToken(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/book/AAPL", nil)
 	req.Header.Set("Authorization", "Bearer "+resp.Token)
 	h.ServeHTTP(httptest.NewRecorder(), req)
-	if gotAccount != "acct-demo-1" {
-		t.Fatalf("minted token did not authenticate; account = %q", gotAccount)
+	if gotAccount != resp.AccountID {
+		t.Fatalf("minted token did not authenticate; account = %q want %q", gotAccount, resp.AccountID)
 	}
 }
 
