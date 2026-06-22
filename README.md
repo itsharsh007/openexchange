@@ -97,8 +97,8 @@ make down      # stop everything
 | Surface | URL |
 |---|---|
 | Dashboard (React) | https://itsharsh007.github.io/openexchange |
-| Gateway API | https://openexchange-gateway.onrender.com/healthz |
-| WebSocket feed | wss://openexchange-gateway.onrender.com/ws |
+| Gateway API | https://openexchange.onrender.com/healthz |
+| WebSocket feed | wss://openexchange.onrender.com/ws |
 
 The gateway runs in `ENGINE_MODE=mock` — REST + WebSocket fully live, no Java engine needed.
 Hosted on Render's free tier, so the first request after ~15 min idle takes ~1 min to wake.
