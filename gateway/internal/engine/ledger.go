@@ -16,8 +16,13 @@ import "context"
 // ─────────────────────────────────────────────────────────────────────────────
 
 type position struct {
-	qty      int64 // signed: positive long, negative short
-	avgPrice int64 // average cost of the open position (0 when flat)
+	qty int64 // signed: positive long, negative short
+	// costBasis is the EXACT total cost of the open position in ticks (a magnitude,
+	// always >= 0; 0 when flat). We keep the integer total — not a rounded average
+	// price — so realized P&L reconciles with cash to the tick. A fractional
+	// average (e.g. 100.015) can't be stored in whole ticks, but its *total*
+	// (200.03) can, and that's what realized P&L is actually computed against.
+	costBasis int64
 }
 
 type ledgerAccount struct {
@@ -68,27 +73,39 @@ func (e *LocalEngine) applyFill(accountID, symbol string, side Side, price, qty 
 	case pos.qty == 0:
 		// Opening a fresh position.
 		pos.qty = delta
-		pos.avgPrice = price
+		pos.costBasis = price * qty
 	case sameSign(pos.qty, delta):
-		// Adding to the position — blend the average cost.
-		newQty := pos.qty + delta
-		pos.avgPrice = (pos.avgPrice*abs(pos.qty) + price*abs(delta)) / abs(newQty)
-		pos.qty = newQty
+		// Adding to the position — accumulate exact cost basis.
+		pos.qty += delta
+		pos.costBasis += price * qty
 	default:
 		// Reducing / closing / flipping — realize P&L on the closed quantity.
 		closeQty := min64(abs(pos.qty), abs(delta))
-		// sign(+1 long, -1 short) * (price - avg) * closed.
-		if pos.qty > 0 {
-			a.realized += (price - pos.avgPrice) * closeQty
+		// Cost basis attributable to the closed quantity. A FULL close removes the
+		// ENTIRE remaining basis with no division, so realized always equals the
+		// cash change when the position returns to flat; a partial close apportions
+		// proportionally and carries the remainder forward.
+		var closedCost int64
+		if closeQty == abs(pos.qty) {
+			closedCost = pos.costBasis
 		} else {
-			a.realized += (pos.avgPrice - price) * closeQty
+			closedCost = pos.costBasis * closeQty / abs(pos.qty)
 		}
+		// Realized = proceeds − cost (long) or cost − proceeds (short).
+		if pos.qty > 0 {
+			a.realized += price*closeQty - closedCost
+		} else {
+			a.realized += closedCost - price*closeQty
+		}
+		pos.costBasis -= closedCost
+
 		newQty := pos.qty + delta
 		switch {
 		case newQty == 0:
-			pos.avgPrice = 0 // flat
+			pos.costBasis = 0 // flat
 		case sameSign(newQty, delta):
-			pos.avgPrice = price // flipped past flat — new position opens at fill price
+			// Flipped past flat — the leftover opens a new position at the fill price.
+			pos.costBasis = price * abs(newQty)
 		}
 		pos.qty = newQty
 	}
@@ -115,16 +132,19 @@ func (e *LocalEngine) GetAccount(ctx context.Context, accountID string) (Account
 		if p.qty == 0 {
 			continue
 		}
-		mark := e.lastPrice[sym]
-		if mark == 0 {
-			mark = p.avgPrice
+		// Display average is derived from the exact basis (rounded to whole ticks
+		// for the UI only — never fed back into P&L math).
+		avg := p.costBasis / abs(p.qty)
+		// Unrealized = market value − cost basis, computed against the exact basis.
+		// With no last trade yet (mark == 0) there's no market price, so it's zero.
+		if mark := e.lastPrice[sym]; mark != 0 {
+			if p.qty > 0 {
+				unrealized += mark*p.qty - p.costBasis
+			} else {
+				unrealized += p.costBasis - mark*abs(p.qty)
+			}
 		}
-		if p.qty > 0 {
-			unrealized += (mark - p.avgPrice) * p.qty
-		} else {
-			unrealized += (p.avgPrice - mark) * (-p.qty)
-		}
-		positions = append(positions, PositionView{Symbol: sym, Quantity: p.qty, AvgPriceTicks: p.avgPrice})
+		positions = append(positions, PositionView{Symbol: sym, Quantity: p.qty, AvgPriceTicks: avg})
 	}
 
 	return AccountSnapshot{

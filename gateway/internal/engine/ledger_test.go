@@ -82,6 +82,34 @@ func TestAvgCostAndUnrealized(t *testing.T) {
 	}
 }
 
+// Realized P&L must reconcile EXACTLY with the cash change when the position
+// returns to flat — even when the average entry price isn't a whole tick.
+// Regression: a rounded integer average drifted realized away from cash (a buy
+// of 1@10001 + 1@10002 has avg 10001.5, which truncated to 10001 and lost 0.10).
+func TestRealizedTiesToCashWhenFlat(t *testing.T) {
+	e := NewLocalEngine()
+	// Buy 2 across two prices → avg 10001.5 (not a whole tick).
+	submit(t, e, "mm", SideSell, OrderTypeLimit, 10001, 1)
+	submit(t, e, "mm", SideSell, OrderTypeLimit, 10002, 1)
+	submit(t, e, "t", SideBuy, OrderTypeMarket, 0, 2)
+	// Sell both back at 10000 → flat.
+	submit(t, e, "mm", SideBuy, OrderTypeLimit, 10000, 2)
+	submit(t, e, "t", SideSell, OrderTypeMarket, 0, 2)
+
+	s := snap(t, e, "t")
+	if len(s.Positions) != 0 {
+		t.Fatalf("expected flat, got %+v", s.Positions)
+	}
+	// True realized = proceeds − cost = 10000*2 − (10001+10002) = −3 (not −2).
+	if s.RealizedPnlTicks != -3 {
+		t.Errorf("realized = %d, want -3", s.RealizedPnlTicks)
+	}
+	// THE INVARIANT: flat ⇒ cash change == realized, to the tick.
+	if got := s.CashTicks - startingCashTicks; got != s.RealizedPnlTicks {
+		t.Errorf("ledger does not reconcile when flat: cash change %d != realized %d", got, s.RealizedPnlTicks)
+	}
+}
+
 // An untouched account reports the opening balance and no positions.
 func TestFreshAccountOpeningBalance(t *testing.T) {
 	e := NewLocalEngine()
