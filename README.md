@@ -2,6 +2,9 @@
 
 [![CI](https://github.com/itsharsh007/openexchange/actions/workflows/ci.yml/badge.svg)](https://github.com/itsharsh007/openexchange/actions/workflows/ci.yml)
 [![Docker](https://github.com/itsharsh007/openexchange/actions/workflows/docker.yml/badge.svg)](https://github.com/itsharsh007/openexchange/actions/workflows/docker.yml)
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/itsharsh007/openexchange)
+
+**▶ [Try the live dashboard](https://itsharsh007.github.io/openexchange/)** &nbsp;·&nbsp; **🚀 [Run the full stack in one click](https://codespaces.new/itsharsh007/openexchange)** (Codespaces)
 
 A polyglot, real-time **simulated trading exchange**. Orders flow from a React dashboard through a
 Go API gateway into a Java matching engine, which matches them with price-time priority, streams
@@ -92,17 +95,36 @@ make test      # run every service's test suite
 make down      # stop everything
 ```
 
-## Live demo
+## Demo
+
+<!-- VIDEO: replace this line with the uploaded walkthrough.
+     Easiest way: open an issue/PR in this repo, drag the .mp4 into the comment box,
+     GitHub uploads it and gives a https://github.com/user-attachments/... link —
+     paste that link here on its own line and it embeds as a player. -->
+
+> 🎥 **Full walkthrough video:** _coming soon_
+
+**Two ways to try it:**
+
+| | What you get | Setup |
+|---|---|---|
+| **▶ [Live dashboard](https://itsharsh007.github.io/openexchange/)** | The UI, live — auth, order book, order entry (mock engine: orders ack but don't match) | none, just click |
+| **🚀 [Open in Codespaces](https://codespaces.new/itsharsh007/openexchange)** | The **full real system** — Java matching engine, Kafka, Postgres, the ML risk loop | one click, then `make up && make seed` (~3 min) |
+
+After the Codespace boots, run `make up && make seed`, open the forwarded port **5173**, and place a
+**BUY** and a crossing **SELL** — you'll see them match, a trade print on the tape, and the Risk/ML
+panel react. That's the whole system end-to-end.
+
+**Live endpoints:**
 
 | Surface | URL |
 |---|---|
-| Dashboard (React) | https://itsharsh007.github.io/openexchange |
+| Dashboard (React) | https://itsharsh007.github.io/openexchange/ |
 | Gateway API | https://openexchange.onrender.com/healthz |
 | WebSocket feed | wss://openexchange.onrender.com/ws |
 
-The gateway runs in `ENGINE_MODE=mock` — REST + WebSocket fully live, no Java engine needed.
-Hosted on Render's free tier, so the first request after ~15 min idle takes ~1 min to wake.
-Kafka, Postgres, and the risk service run locally; see the demo video in [`docs/`](docs/).
+The hosted gateway runs in `ENGINE_MODE=mock` (REST + WebSocket fully live, no JVM/Kafka needed) on
+Render's free tier — the first request after ~15 min idle takes ~1 min to wake.
 
 Deploy your own: [`docs/cloud-deploy.md`](docs/cloud-deploy.md) (no credit card required).
 
