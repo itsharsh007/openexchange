@@ -34,6 +34,16 @@ type Config struct {
 	// browser only honors cross-origin calls from the trusted frontend.
 	CORSAllowedOrigin string
 
+	// DemoAuthEnabled exposes POST /auth/demo, which mints a short-lived bearer
+	// token for an anonymous demo session. It lets the public dashboard work
+	// without a login flow (play money, mock engine). Turn it OFF for any deploy
+	// where you don't want anonymous order access.
+	DemoAuthEnabled bool
+	// DemoAccountID is the `sub` (account) every demo session is issued under.
+	DemoAccountID string
+	// DemoSessionTTL is how long a minted demo token stays valid.
+	DemoSessionTTL time.Duration
+
 	// RateLimitPerSecond is the sustained token-bucket refill rate per client.
 	RateLimitPerSecond float64
 	// RateLimitBurst is the maximum burst (bucket capacity) per client.
@@ -90,6 +100,9 @@ func Load() (*Config, []string) {
 		RedisAddr:          getenv("REDIS_ADDR", "localhost:6379"),
 		JWTSecret:          jwtSecret,
 		CORSAllowedOrigin:  corsOrigin,
+		DemoAuthEnabled:    getenvBool("DEMO_AUTH_ENABLED", true),
+		DemoAccountID:      getenv("DEMO_ACCOUNT_ID", "acct-demo-1"),
+		DemoSessionTTL:     getenvDuration("DEMO_SESSION_TTL", 12*time.Hour),
 		RateLimitPerSecond: getenvFloat("RATE_LIMIT_RPS", 20),
 		RateLimitBurst:     getenvInt("RATE_LIMIT_BURST", 40),
 		EngineTimeout:      getenvDuration("ENGINE_TIMEOUT", 3*time.Second),
@@ -118,6 +131,15 @@ func (c *Config) String() string {
 func getenv(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
+	}
+	return def
+}
+
+func getenvBool(key string, def bool) bool {
+	if v := os.Getenv(key); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			return b
+		}
 	}
 	return def
 }

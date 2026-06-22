@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { getBook } from "./api/client";
+import { ensureSession } from "./api/session";
 import { OrderBook } from "./components/OrderBook";
 import { TradeTape } from "./components/TradeTape";
 import { OrderEntry } from "./components/OrderEntry";
@@ -19,8 +20,9 @@ import type {
 import styles from "./App.module.css";
 
 // Demo constants. In a real build the symbol comes from a selector and the
-// account from the authenticated session.
-const SYMBOL = "ACME";
+// account from the authenticated session. AAPL is one of the seeded symbols the
+// gateway serves a book for (see scripts/seed.sh).
+const SYMBOL = "AAPL";
 const ACCOUNT_ID = "acct-demo-1";
 const CHANNELS: WsChannel[] = ["book", "trades", "risk"];
 
@@ -41,6 +43,9 @@ export default function App() {
   const [trades, setTrades] = useState<Trade[]>([]);
   const [risk, setRisk] = useState<RiskSignal | null>(null);
   const [orders, setOrders] = useState<TrackedOrder[]>([]);
+  // Gate REST/WS until we hold a bearer token. The public dashboard fetches an
+  // anonymous demo session from the gateway; locally a build-time token may exist.
+  const [authReady, setAuthReady] = useState(false);
 
   // ── Blotter mutation helpers (optimistic add + reconcile) ──────────────────
   const addOptimistic = useCallback((order: TrackedOrder) => {
@@ -95,19 +100,27 @@ export default function App() {
     channels: CHANNELS,
     symbol: SYMBOL,
     onMessage: handleMessage,
+    enabled: authReady,
   });
+
+  // ── Obtain a bearer token before any authenticated call. Runs once on mount.
+  useEffect(() => {
+    ensureSession()
+      .then(() => setAuthReady(true))
+      .catch((err) => console.error("[auth] could not obtain demo session", err));
+  }, []);
 
   // ── Seed the book once via REST so the ladder isn't empty before first WS
   // frame. WHY: WS gives deltas/snapshots going forward, but on initial load we
   // want immediate state. Guarded so it runs once.
   const seeded = useRef(false);
   useEffect(() => {
-    if (seeded.current) return;
+    if (!authReady || seeded.current) return; // need a token before the REST call
     seeded.current = true;
     getBook(SYMBOL).then(setBook).catch(() => {
       // Gateway may be down during dev; the WS will fill the book when it's up.
     });
-  }, []);
+  }, [authReady]);
 
   const account = useMemo(() => MOCK_ACCOUNT, []);
 

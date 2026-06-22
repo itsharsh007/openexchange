@@ -1,4 +1,5 @@
-import { API_BASE, DEMO_TOKEN } from "../config";
+import { API_BASE } from "../config";
+import { authToken } from "./session";
 import type {
   BookSnapshot,
   CancelOrder,
@@ -30,11 +31,12 @@ export class ApiError extends Error {
 
 // A single fetch wrapper that parses JSON and throws ApiError on failure.
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const tok = authToken();
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
-      ...(DEMO_TOKEN ? { Authorization: `Bearer ${DEMO_TOKEN}` } : {}),
+      ...(tok ? { Authorization: `Bearer ${tok}` } : {}),
       ...(init?.headers ?? {}),
     },
   });

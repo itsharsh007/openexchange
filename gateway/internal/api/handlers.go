@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/itsharsh007/openexchange/gateway/internal/cache"
@@ -67,6 +68,13 @@ func (s *Server) Routes(rl *middleware.RateLimiter, auth *middleware.JWTAuth) ht
 	// first so unauthenticated floods are cheap to reject before crypto work.
 	protect := func(h http.HandlerFunc) http.Handler {
 		return rl.Middleware(auth.Middleware(h))
+	}
+
+	// Anonymous demo session: mints a short-lived bearer token so the public
+	// dashboard works without a login flow. Rate-limited (no auth — that's the
+	// point) and only registered when DEMO_AUTH_ENABLED is set.
+	if s.cfg.DemoAuthEnabled {
+		mux.Handle("POST /auth/demo", rl.Middleware(http.HandlerFunc(s.handleDemoSession)))
 	}
 
 	mux.Handle("POST /orders", protect(s.handleSubmit))
@@ -244,6 +252,30 @@ func (s *Server) broadcastBook(symbol string) {
 		Type string              `json:"type"`
 		Data engine.BookSnapshot `json:"data"`
 	}{Type: "book", Data: snap})
+}
+
+// handleDemoSession: POST /auth/demo — issues a short-lived HS256 bearer token
+// for an anonymous demo account. This is the "real auth" surface for a public
+// playground: no password (it's play money on a mock engine), but a proper
+// signed, expiring token rather than a static secret baked into the frontend.
+// A login-backed issuer would slot in here unchanged — same token shape.
+func (s *Server) handleDemoSession(w http.ResponseWriter, r *http.Request) {
+	exp := time.Now().Add(s.cfg.DemoSessionTTL)
+	claims := jwt.RegisteredClaims{
+		Subject:   s.cfg.DemoAccountID,
+		ExpiresAt: jwt.NewNumericDate(exp),
+		IssuedAt:  jwt.NewNumericDate(time.Now()),
+	}
+	signed, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(s.cfg.JWTSecret))
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "could not mint demo token")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"token":            signed,
+		"accountId":        s.cfg.DemoAccountID,
+		"expiresInSeconds": int(s.cfg.DemoSessionTTL.Seconds()),
+	})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

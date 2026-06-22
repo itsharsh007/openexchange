@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { DEMO_TOKEN, WS_URL } from "../config";
+import { WS_URL } from "../config";
+import { authToken } from "../api/session";
 import type {
   ClientMessage,
   ConnectionState,
@@ -34,6 +35,8 @@ interface UseWebSocketOptions {
   /** Backoff tuning (sane defaults below). */
   baseDelayMs?: number;
   maxDelayMs?: number;
+  /** Gate connection until prerequisites (e.g. an auth token) are ready. */
+  enabled?: boolean;
 }
 
 interface UseWebSocketResult {
@@ -49,6 +52,7 @@ export function useWebSocket(opts: UseWebSocketOptions): UseWebSocketResult {
     onMessage,
     baseDelayMs = 500, // first retry after ~0.5s
     maxDelayMs = 30_000, // cap backoff at 30s
+    enabled = true,
   } = opts;
 
   const [connectionState, setConnectionState] =
@@ -89,13 +93,15 @@ export function useWebSocket(opts: UseWebSocketOptions): UseWebSocketResult {
   }, [baseDelayMs, maxDelayMs]);
 
   useEffect(() => {
+    if (!enabled) return; // wait until prerequisites (auth token) are ready
     closedByUserRef.current = false;
 
     // connect() is recursive-ish: on close it schedules itself via setTimeout.
     const connect = () => {
       setConnectionState(retryRef.current === 0 ? "connecting" : "reconnecting");
 
-      const url = DEMO_TOKEN ? `${WS_URL}?token=${encodeURIComponent(DEMO_TOKEN)}` : WS_URL;
+      const tok = authToken();
+      const url = tok ? `${WS_URL}?token=${encodeURIComponent(tok)}` : WS_URL;
       const ws = new WebSocket(url);
       wsRef.current = ws;
 
@@ -148,9 +154,9 @@ export function useWebSocket(opts: UseWebSocketOptions): UseWebSocketResult {
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
       wsRef.current?.close();
     };
-    // We deliberately depend only on nextDelay (stable). Channel/symbol changes
-    // are handled by the separate effect below WITHOUT tearing down the socket.
-  }, [nextDelay]);
+    // We deliberately depend only on nextDelay (stable) + enabled. Channel/symbol
+    // changes are handled by the separate effect below WITHOUT tearing the socket.
+  }, [nextDelay, enabled]);
 
   // When the desired subscription changes, send a new subscribe frame on the
   // existing open socket — no reconnect needed.
