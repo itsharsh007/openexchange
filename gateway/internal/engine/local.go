@@ -48,22 +48,33 @@ type orderBook struct {
 	orders []*restingOrder
 }
 
+// startingCashTicks is every demo account's opening balance ($10,000), matching
+// the frontend's default so the panel reads consistently before the first trade.
+const startingCashTicks = 1_000_000
+
 // LocalEngine implements EngineClient with real matching.
 type LocalEngine struct {
-	mu      sync.Mutex
-	books   map[string]*orderBook
-	orderID atomic.Int64
-	tradeID atomic.Int64
-	seq     atomic.Int64
+	mu        sync.Mutex
+	books     map[string]*orderBook
+	accounts  map[string]*ledgerAccount // per-account cash/positions/realized PnL
+	lastPrice map[string]int64          // last trade price per symbol — marks unrealized PnL
+	orderID   atomic.Int64
+	tradeID   atomic.Int64
+	seq       atomic.Int64
 }
 
 var _ EngineClient = (*LocalEngine)(nil)
+var _ AccountProvider = (*LocalEngine)(nil)
 
 // NewLocalEngine builds an engine and seeds a starting book for the given symbols
 // so the ladder isn't empty for the first visitor. Seeded liquidity comes from a
 // synthetic "market-maker" account around a notional mid of 10000 ticks ($100.00).
 func NewLocalEngine(seedSymbols ...string) *LocalEngine {
-	e := &LocalEngine{books: make(map[string]*orderBook)}
+	e := &LocalEngine{
+		books:     make(map[string]*orderBook),
+		accounts:  make(map[string]*ledgerAccount),
+		lastPrice: make(map[string]int64),
+	}
 	for _, sym := range seedSymbols {
 		e.seedBook(sym)
 	}
@@ -156,6 +167,13 @@ func (e *LocalEngine) SubmitOrder(ctx context.Context, o NewOrder) (OrderAck, er
 			SellOrderID: sellID,
 			TsMillis:    now,
 		})
+
+		// Update both sides' ledgers and the symbol's mark price. The taker is the
+		// incoming order (o); the maker is the resting order being hit.
+		e.applyFill(o.AccountID, o.Symbol, o.Side, maker.price, fill)
+		e.applyFill(maker.accountID, o.Symbol, opposite(o.Side), maker.price, fill)
+		e.lastPrice[o.Symbol] = maker.price
+
 		if maker.remaining == 0 {
 			e.remove(b, maker.id)
 		}

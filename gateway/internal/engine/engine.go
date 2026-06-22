@@ -120,6 +120,30 @@ type EngineClient interface {
 	GetBook(ctx context.Context, r BookRequest) (BookSnapshot, error)
 }
 
+// PositionView is one symbol's net position for an account, with average cost.
+type PositionView struct {
+	Symbol        string `json:"symbol"`
+	Quantity      int64  `json:"quantity"` // signed: positive long, negative short
+	AvgPriceTicks int64  `json:"avgPriceTicks"`
+}
+
+// AccountSnapshot is an account's cash + P&L + positions. JSON field names match
+// web/src/types.ts AccountSnapshot so the dashboard renders it directly.
+type AccountSnapshot struct {
+	AccountID          string         `json:"accountId"`
+	CashTicks          int64          `json:"cashTicks"`
+	RealizedPnlTicks   int64          `json:"realizedPnlTicks"`
+	UnrealizedPnlTicks int64          `json:"unrealizedPnlTicks"`
+	Positions          []PositionView `json:"positions"`
+}
+
+// AccountProvider is implemented by engines that track per-account cash/positions
+// (the in-process LocalEngine). The gRPC engine keeps the authoritative ledger in
+// Postgres, so the gateway only serves account state when matching locally.
+type AccountProvider interface {
+	GetAccount(ctx context.Context, accountID string) (AccountSnapshot, error)
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // MockClient: a deterministic in-memory stand-in for the real engine.
 //

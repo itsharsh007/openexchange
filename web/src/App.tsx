@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useWebSocket } from "./hooks/useWebSocket";
-import { getBook } from "./api/client";
+import { getBook, getAccount } from "./api/client";
 import { ensureSession, demoAccountId } from "./api/session";
 import { OrderBook } from "./components/OrderBook";
 import { TradeTape } from "./components/TradeTape";
@@ -49,6 +49,14 @@ export default function App() {
   // The account this browser trades as — unique per session, so two visitors are
   // distinct traders whose orders cross. Falls back to the constant until ready.
   const [accountId, setAccountId] = useState(ACCOUNT_ID);
+  // Live cash / P&L / positions, fetched from the gateway and refreshed on fills.
+  const [account, setAccount] = useState<AccountSnapshot>(MOCK_ACCOUNT);
+
+  // Pull the latest account snapshot from the gateway. Best-effort: a failure
+  // leaves the last-known values rather than blanking the panel.
+  const refetchAccount = useCallback(() => {
+    getAccount().then(setAccount).catch(() => {});
+  }, []);
 
   // ── Blotter mutation helpers (optimistic add + reconcile) ──────────────────
   const addOptimistic = useCallback((order: TrackedOrder) => {
@@ -77,6 +85,9 @@ export default function App() {
         break;
       case "trade":
         setTrades((prev) => [msg.data, ...prev].slice(0, MAX_TRADES));
+        // A trade may have touched this account (as taker OR resting maker), so
+        // refresh cash/P&L/positions. Cheap at demo volume; always correct.
+        refetchAccount();
         break;
       case "risk":
         setRisk(msg.data);
@@ -95,9 +106,10 @@ export default function App() {
               : o,
           ),
         );
+        refetchAccount();
         break;
     }
-  }, []);
+  }, [refetchAccount]);
 
   const { connectionState } = useWebSocket({
     channels: CHANNELS,
@@ -112,9 +124,10 @@ export default function App() {
       .then(() => {
         setAccountId(demoAccountId() || ACCOUNT_ID);
         setAuthReady(true);
+        refetchAccount();
       })
       .catch((err) => console.error("[auth] could not obtain demo session", err));
-  }, []);
+  }, [refetchAccount]);
 
   // ── Seed the book once via REST so the ladder isn't empty before first WS
   // frame. WHY: WS gives deltas/snapshots going forward, but on initial load we
@@ -127,11 +140,6 @@ export default function App() {
       // Gateway may be down during dev; the WS will fill the book when it's up.
     });
   }, [authReady]);
-
-  const account = useMemo(
-    () => ({ ...MOCK_ACCOUNT, accountId }),
-    [accountId],
-  );
 
   return (
     <div className={styles.app}>

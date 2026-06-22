@@ -1,6 +1,7 @@
 import { API_BASE } from "../config";
 import { authToken } from "./session";
 import type {
+  AccountSnapshot,
   BookSnapshot,
   CancelOrder,
   NewOrder,
@@ -77,4 +78,9 @@ export function cancelOrder(cancel: CancelOrder): Promise<OrderAck> {
 /** Fetch a one-shot order-book snapshot (used to seed the ladder before WS). */
 export function getBook(symbol: string, depth = 20): Promise<BookSnapshot> {
   return request<BookSnapshot>(`/book/${encodeURIComponent(symbol)}?depth=${depth}`);
+}
+
+/** Fetch the authenticated account's cash, P&L, and positions. */
+export function getAccount(): Promise<AccountSnapshot> {
+  return request<AccountSnapshot>("/account");
 }

@@ -80,6 +80,7 @@ func (s *Server) Routes(rl *middleware.RateLimiter, auth *middleware.JWTAuth) ht
 	mux.Handle("POST /orders", protect(s.handleSubmit))
 	mux.Handle("DELETE /orders/{id}", protect(s.handleCancel))
 	mux.Handle("GET /book/{symbol}", protect(s.handleBook))
+	mux.Handle("GET /account", protect(s.handleAccount))
 	mux.Handle("GET /ws", protect(http.HandlerFunc(s.hub.ServeWS)))
 
 	return mux
@@ -259,6 +260,27 @@ func (s *Server) broadcastBook(symbol string) {
 		Type string              `json:"type"`
 		Data engine.BookSnapshot `json:"data"`
 	}{Type: "book", Data: snap})
+}
+
+// handleAccount: GET /account — the authenticated account's cash, P&L, and
+// positions. Served only when the engine tracks accounts locally (the in-process
+// LocalEngine); with the gRPC engine the authoritative ledger lives in Postgres,
+// so we return an opening snapshot rather than a wrong number.
+func (s *Server) handleAccount(w http.ResponseWriter, r *http.Request) {
+	acct := middleware.AccountID(r.Context())
+	ap, ok := s.eng.(engine.AccountProvider)
+	if !ok {
+		writeJSON(w, http.StatusOK, engine.AccountSnapshot{AccountID: acct, Positions: []engine.PositionView{}})
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), s.cfg.EngineTimeout)
+	defer cancel()
+	snap, err := ap.GetAccount(ctx, acct)
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, "account unavailable: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, snap)
 }
 
 // handleDemoSession: POST /auth/demo — issues a short-lived HS256 bearer token

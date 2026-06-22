@@ -1,0 +1,92 @@
+package engine
+
+import "testing"
+
+// snapshot is a tiny helper to read an account back out of the engine.
+func snap(t *testing.T, e *LocalEngine, acct string) AccountSnapshot {
+	t.Helper()
+	s, err := e.GetAccount(mkt(), acct)
+	if err != nil {
+		t.Fatalf("GetAccount: %v", err)
+	}
+	return s
+}
+
+// A fill must move cash and positions for BOTH sides, and cash must be conserved:
+// what the buyer pays, the seller receives.
+func TestFillUpdatesBothLedgersAndConservesCash(t *testing.T) {
+	e := NewLocalEngine()
+	// alice rests a buy; bob sells into it → they trade 5 @ 10000.
+	submit(t, e, "alice", SideBuy, OrderTypeLimit, 10000, 5)
+	submit(t, e, "bob", SideSell, OrderTypeLimit, 10000, 5)
+
+	a, b := snap(t, e, "alice"), snap(t, e, "bob")
+	if a.CashTicks != startingCashTicks-10000*5 {
+		t.Errorf("buyer cash = %d, want %d", a.CashTicks, startingCashTicks-50000)
+	}
+	if b.CashTicks != startingCashTicks+10000*5 {
+		t.Errorf("seller cash = %d, want %d", b.CashTicks, startingCashTicks+50000)
+	}
+	// Cash conservation: total cash across both equals 2× the opening balance.
+	if a.CashTicks+b.CashTicks != 2*startingCashTicks {
+		t.Errorf("cash not conserved: %d + %d != %d", a.CashTicks, b.CashTicks, 2*startingCashTicks)
+	}
+	if len(a.Positions) != 1 || a.Positions[0].Quantity != 5 || a.Positions[0].AvgPriceTicks != 10000 {
+		t.Errorf("buyer should be long 5 @ 10000, got %+v", a.Positions)
+	}
+	if len(b.Positions) != 1 || b.Positions[0].Quantity != -5 {
+		t.Errorf("seller should be short 5, got %+v", b.Positions)
+	}
+}
+
+// Buying then selling higher books a realized profit and returns the account flat.
+func TestRealizedPnlOnRoundTrip(t *testing.T) {
+	e := NewLocalEngine()
+	// Seed asks at 10000 and bids at 10010 from a maker so our trader can buy then sell.
+	submit(t, e, "mm", SideSell, OrderTypeLimit, 10000, 10) // trader buys here
+	submit(t, e, "trader", SideBuy, OrderTypeMarket, 0, 10) // long 10 @ 10000
+	submit(t, e, "mm", SideBuy, OrderTypeLimit, 10010, 10)  // trader sells here
+	submit(t, e, "trader", SideSell, OrderTypeMarket, 0, 10) // close 10 @ 10010
+
+	s := snap(t, e, "trader")
+	if len(s.Positions) != 0 {
+		t.Errorf("trader should be flat, got %+v", s.Positions)
+	}
+	if s.RealizedPnlTicks != (10010-10000)*10 {
+		t.Errorf("realized P&L = %d, want %d", s.RealizedPnlTicks, 100)
+	}
+	if s.UnrealizedPnlTicks != 0 {
+		t.Errorf("flat account should have 0 unrealized, got %d", s.UnrealizedPnlTicks)
+	}
+	// Net cash gain equals the realized profit.
+	if s.CashTicks != startingCashTicks+100 {
+		t.Errorf("cash = %d, want %d", s.CashTicks, startingCashTicks+100)
+	}
+}
+
+// Adding to a position blends the average cost; the mark-to-market drives unrealized.
+func TestAvgCostAndUnrealized(t *testing.T) {
+	e := NewLocalEngine()
+	submit(t, e, "mm", SideSell, OrderTypeLimit, 10000, 4)
+	submit(t, e, "mm", SideSell, OrderTypeLimit, 10020, 6)
+	submit(t, e, "t", SideBuy, OrderTypeMarket, 0, 10) // 4@10000 + 6@10020
+
+	s := snap(t, e, "t")
+	wantAvg := int64((10000*4 + 10020*6) / 10) // = 10012
+	if s.Positions[0].AvgPriceTicks != wantAvg {
+		t.Errorf("avg price = %d, want %d", s.Positions[0].AvgPriceTicks, wantAvg)
+	}
+	// Last trade printed at 10020 → mark to 10020; unrealized = (10020-avg)*10.
+	if want := (10020 - wantAvg) * 10; s.UnrealizedPnlTicks != want {
+		t.Errorf("unrealized = %d, want %d", s.UnrealizedPnlTicks, want)
+	}
+}
+
+// An untouched account reports the opening balance and no positions.
+func TestFreshAccountOpeningBalance(t *testing.T) {
+	e := NewLocalEngine()
+	s := snap(t, e, "newcomer")
+	if s.CashTicks != startingCashTicks || len(s.Positions) != 0 {
+		t.Errorf("fresh account = %+v, want opening cash and flat", s)
+	}
+}
