@@ -5,7 +5,12 @@ import react from "@vitejs/plugin-react";
 // shell, and are exposed to client code only when prefixed with `VITE_`
 // (see src/config.ts). This keeps with Twelve-Factor: config lives in the env,
 // never hardcoded in source.
+//
+// `base` is the public path the bundle is served under. Locally that's "/" (the
+// default); on GitHub Pages the site lives at /<repo>/, so the Pages workflow sets
+// VITE_BASE=/openexchange/ at build time. Without this, asset URLs 404 on Pages.
 export default defineConfig({
+  base: process.env.VITE_BASE || "/",
   plugins: [react()],
   server: {
     port: 5173,

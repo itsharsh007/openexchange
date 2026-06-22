@@ -97,10 +97,11 @@ make down      # stop everything
 | Surface | URL |
 |---|---|
 | Dashboard (React) | https://itsharsh007.github.io/openexchange |
-| Gateway API | https://openexchange-gateway.koyeb.app/healthz |
-| WebSocket feed | wss://openexchange-gateway.koyeb.app/ws |
+| Gateway API | https://openexchange-gateway.onrender.com/healthz |
+| WebSocket feed | wss://openexchange-gateway.onrender.com/ws |
 
 The gateway runs in `ENGINE_MODE=mock` — REST + WebSocket fully live, no Java engine needed.
+Hosted on Render's free tier, so the first request after ~15 min idle takes ~1 min to wake.
 Kafka, Postgres, and the risk service run locally; see the demo video in [`docs/`](docs/).
 
 Deploy your own: [`docs/cloud-deploy.md`](docs/cloud-deploy.md) (no credit card required).

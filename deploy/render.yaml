@@ -1,0 +1,50 @@
+# OpenExchange gateway — Render deploy blueprint.
+#
+# Render's free tier needs NO credit card. Free web services get 750 instance-hours
+# per month (enough for one always-on service) and spin down after 15 min idle,
+# cold-starting in ~1 min on the next request — acceptable for a public demo.
+#
+# Quickest path (dashboard — recommended for the first deploy):
+#   1. Sign in at render.com with GitHub (no card)
+#   2. New + -> Web Service -> pick this repo -> branch: master
+#   3. Language: Docker | Root Directory: gateway | Dockerfile Path: Dockerfile
+#   4. Region: Frankfurt | Instance: Free | Health Check Path: /healthz
+#   5. Env vars:
+#        ENGINE_MODE         = mock
+#        PORT                = 8080
+#        CORS_ALLOWED_ORIGIN = https://itsharsh007.github.io
+#        JWT_SECRET          = <paste from: openssl rand -hex 32>
+#   6. Create Web Service -> live at https://<name>.onrender.com
+#
+# Blueprint path (commit this file, then New + -> Blueprint -> pick the repo):
+#   Render reads this render.yaml and provisions the service automatically.
+#
+# After deploy, set VITE_API_BASE + VITE_WS_URL in the GitHub repo Variables
+# (Settings -> Secrets and variables -> Actions -> Variables) for the Pages build:
+#   VITE_API_BASE = https://<name>.onrender.com
+#   VITE_WS_URL   = wss://<name>.onrender.com/ws
+
+services:
+  - type: web
+    name: openexchange-gateway
+    runtime: docker
+    repo: https://github.com/itsharsh007/openexchange
+    branch: master
+    dockerfilePath: gateway/Dockerfile
+    dockerContext: gateway
+    region: frankfurt
+    plan: free
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: ENGINE_MODE
+        value: mock
+      - key: PORT
+        value: "8080"
+      # Pin CORS to the GitHub Pages dashboard origin (scheme+host, no path) so the
+      # public gateway only honors browser calls from the trusted frontend.
+      - key: CORS_ALLOWED_ORIGIN
+        value: https://itsharsh007.github.io
+      # Set in the dashboard / Blueprint prompt; never committed.
+      - key: JWT_SECRET
+        sync: false
