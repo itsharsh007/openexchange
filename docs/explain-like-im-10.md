@@ -44,7 +44,7 @@ also a fortune-teller.
 
 Because it secretly contains **every hard computer-science topic at once** — super-fast sorting,
 doing many things at the same time without crashing, lots of programs talking to each other,
-storing data safely, robots that learn. So in a job review, when they ask *"have you built
+storing data safely, robots that learn. So when someone asks *"have you built
 something complex?"*, you can walk them through this whole marketplace, brick by brick. 🧱
 
 ## The grown-up words for each part (so you can connect the two)

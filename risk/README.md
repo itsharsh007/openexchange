@@ -233,4 +233,4 @@ to `kafka-python` touches only `app/kafka_consumer.py`.
 The gateway's reject path can (a) call `POST /score-order` synchronously and block on
 `decision == "REJECT"`, and/or (b) consume `risk-signals` and call `GET /risk/{account_id}` to gate
 accounts that are over limit. The per-order anomaly check and the per-account exposure check are
-complementary. See `docs/deep-dive/risk.md`.
+complementary. See `docs/architecture.md`.

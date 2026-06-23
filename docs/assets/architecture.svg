@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="600" viewBox="0 0 1280 600" font-family="-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#58a6ff"/>
+    </marker>
+    <marker id="arrowback" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#3fb950"/>
+    </marker>
+    <marker id="arrowfb" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#f778ba"/>
+    </marker>
+    <marker id="arrowmute" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#8b949e"/>
+    </marker>
+  </defs>
+
+  <rect width="1280" height="600" rx="14" fill="#0d1117"/>
+  <text x="40" y="48" fill="#e6edf3" font-size="26" font-weight="700">OpenExchange</text>
+  <text x="40" y="74" fill="#8b949e" font-size="15">A polyglot real-time trading exchange — order lifecycle &amp; data flow</text>
+
+  <!-- legend -->
+  <g font-size="12" fill="#8b949e">
+    <line x1="900" y1="40" x2="930" y2="40" stroke="#58a6ff" stroke-width="3"/>
+    <text x="936" y="44">request path</text>
+    <line x1="1030" y1="40" x2="1060" y2="40" stroke="#3fb950" stroke-width="3" stroke-dasharray="5 4"/>
+    <text x="1066" y="44">live WebSocket</text>
+    <line x1="900" y1="62" x2="930" y2="62" stroke="#f778ba" stroke-width="3"/>
+    <text x="936" y="66">risk feedback</text>
+    <line x1="1030" y1="62" x2="1060" y2="62" stroke="#8b949e" stroke-width="3" stroke-dasharray="3 3"/>
+    <text x="1066" y="66">metrics scrape</text>
+  </g>
+
+  <!-- ============ NODES ============ -->
+  <!-- web -->
+  <g>
+    <rect x="40" y="170" width="200" height="96" rx="10" fill="#161b22" stroke="#30363d"/>
+    <rect x="40" y="170" width="200" height="5" rx="2.5" fill="#61DAFB"/>
+    <text x="56" y="202" fill="#e6edf3" font-size="16" font-weight="600">Web Dashboard</text>
+    <text x="56" y="224" fill="#61DAFB" font-size="12.5">React + TypeScript</text>
+    <text x="56" y="245" fill="#8b949e" font-size="11.5">order book · depth · tape · P&amp;L</text>
+  </g>
+  <!-- gateway -->
+  <g>
+    <rect x="340" y="170" width="200" height="96" rx="10" fill="#161b22" stroke="#30363d"/>
+    <rect x="340" y="170" width="200" height="5" rx="2.5" fill="#00ADD8"/>
+    <text x="356" y="202" fill="#e6edf3" font-size="16" font-weight="600">API Gateway</text>
+    <text x="356" y="224" fill="#00ADD8" font-size="12.5">Go</text>
+    <text x="356" y="245" fill="#8b949e" font-size="11.5">REST · WS · gRPC · auth · rate-limit</text>
+  </g>
+  <!-- engine -->
+  <g>
+    <rect x="640" y="170" width="200" height="96" rx="10" fill="#161b22" stroke="#30363d"/>
+    <rect x="640" y="170" width="200" height="5" rx="2.5" fill="#F89820"/>
+    <text x="656" y="202" fill="#e6edf3" font-size="16" font-weight="600">Matching Engine</text>
+    <text x="656" y="224" fill="#F89820" font-size="12.5">Java + Spring Boot</text>
+    <text x="656" y="245" fill="#8b949e" font-size="11.5">limit order book · price-time</text>
+  </g>
+  <!-- kafka -->
+  <g>
+    <rect x="940" y="170" width="180" height="96" rx="10" fill="#161b22" stroke="#30363d"/>
+    <rect x="940" y="170" width="180" height="5" rx="2.5" fill="#9b5de5"/>
+    <text x="956" y="202" fill="#e6edf3" font-size="16" font-weight="600">Kafka</text>
+    <text x="956" y="224" fill="#9b5de5" font-size="12.5">event streaming</text>
+    <text x="956" y="245" fill="#8b949e" font-size="11.5">orders · trades · risk-signals</text>
+  </g>
+  <!-- risk -->
+  <g>
+    <rect x="940" y="380" width="180" height="96" rx="10" fill="#161b22" stroke="#30363d"/>
+    <rect x="940" y="380" width="180" height="5" rx="2.5" fill="#4B8BBE"/>
+    <text x="956" y="412" fill="#e6edf3" font-size="16" font-weight="600">Risk / ML</text>
+    <text x="956" y="434" fill="#4B8BBE" font-size="12.5">Python + FastAPI</text>
+    <text x="956" y="455" fill="#8b949e" font-size="11.5">price pred · anomaly · risk</text>
+  </g>
+  <!-- redis -->
+  <g>
+    <rect x="340" y="380" width="200" height="80" rx="10" fill="#161b22" stroke="#30363d"/>
+    <rect x="340" y="380" width="200" height="5" rx="2.5" fill="#DC382D"/>
+    <text x="356" y="414" fill="#e6edf3" font-size="15" font-weight="600">Redis</text>
+    <text x="356" y="436" fill="#8b949e" font-size="11.5">hot top-of-book cache</text>
+  </g>
+  <!-- postgres -->
+  <g>
+    <rect x="640" y="380" width="200" height="80" rx="10" fill="#161b22" stroke="#30363d"/>
+    <rect x="640" y="380" width="200" height="5" rx="2.5" fill="#336791"/>
+    <text x="656" y="414" fill="#e6edf3" font-size="15" font-weight="600">Postgres</text>
+    <text x="656" y="436" fill="#8b949e" font-size="11.5">double-entry ledger · users</text>
+  </g>
+  <!-- observability -->
+  <g>
+    <rect x="340" y="510" width="500" height="62" rx="10" fill="#161b22" stroke="#30363d"/>
+    <rect x="340" y="510" width="500" height="5" rx="2.5" fill="#E6522C"/>
+    <text x="356" y="540" fill="#e6edf3" font-size="15" font-weight="600">Observability</text>
+    <text x="356" y="560" fill="#8b949e" font-size="11.5">Prometheus (scrape /metrics)  →  Grafana dashboards</text>
+  </g>
+
+  <!-- ============ EDGES ============ -->
+  <!-- web -> gateway (REST) -->
+  <line x1="240" y1="200" x2="338" y2="200" stroke="#58a6ff" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <text x="244" y="192" fill="#8b949e" font-size="11">REST + JWT</text>
+  <!-- gateway -> web (WS) -->
+  <line x1="338" y1="236" x2="242" y2="236" stroke="#3fb950" stroke-width="2.5" stroke-dasharray="5 4" marker-end="url(#arrowback)"/>
+  <text x="250" y="254" fill="#8b949e" font-size="11">live ticks (WS)</text>
+  <!-- gateway -> engine -->
+  <line x1="540" y1="218" x2="638" y2="218" stroke="#58a6ff" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <text x="548" y="210" fill="#8b949e" font-size="11">gRPC submit</text>
+  <!-- engine -> kafka -->
+  <line x1="840" y1="218" x2="938" y2="218" stroke="#58a6ff" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <text x="846" y="210" fill="#8b949e" font-size="11">publish</text>
+  <!-- kafka -> risk -->
+  <line x1="1030" y1="266" x2="1030" y2="378" stroke="#58a6ff" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <text x="1038" y="330" fill="#8b949e" font-size="11">consume</text>
+  <!-- risk -> gateway (risk-signals feedback): arcs through the clear band -->
+  <path d="M 1010 378 C 1010 320, 640 320, 482 268" fill="none" stroke="#f778ba" stroke-width="2.5" marker-end="url(#arrowfb)"/>
+  <text x="600" y="312" fill="#f778ba" font-size="11">risk-signals → gate orders</text>
+  <!-- gateway -> redis -->
+  <line x1="440" y1="266" x2="440" y2="378" stroke="#8b949e" stroke-width="2" marker-end="url(#arrowmute)"/>
+  <text x="448" y="330" fill="#8b949e" font-size="11">cache</text>
+  <!-- engine -> postgres -->
+  <line x1="740" y1="266" x2="740" y2="378" stroke="#8b949e" stroke-width="2" marker-end="url(#arrowmute)"/>
+  <text x="748" y="330" fill="#8b949e" font-size="11">ledger</text>
+  <!-- risk -> postgres (features) -->
+  <path d="M 938 440 C 880 440, 860 430, 842 425" fill="none" stroke="#8b949e" stroke-width="2" marker-end="url(#arrowmute)"/>
+  <!-- metrics scrape -->
+  <line x1="500" y1="460" x2="540" y2="508" stroke="#8b949e" stroke-width="1.6" stroke-dasharray="3 3" marker-end="url(#arrowmute)"/>
+  <line x1="940" y1="470" x2="800" y2="510" stroke="#8b949e" stroke-width="1.6" stroke-dasharray="3 3" marker-end="url(#arrowmute)"/>
+</svg>

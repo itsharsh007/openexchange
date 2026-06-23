@@ -31,4 +31,4 @@ point for money), with a `HashMap<orderId, ...>` index.
 
 ## Consequences
 - Prices stored as integer ticks (no float rounding bugs in money math).
-- Clear Big-O story for reviews.
+- Clear Big-O story.

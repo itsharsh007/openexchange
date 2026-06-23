@@ -189,7 +189,7 @@ Format of each entry: **Symptom → Cause → Fix → Lesson.**
 ### No existing proto message fit an "order event"
 - **Symptom:** wanted to reuse `NewOrder` for the topic, but it has no `is_cancel`, no resulting
   `status`, and no `ts_millis` — so it can't represent a cancel or a rejection outcome.
-- **Fix:** added a dedicated `OrderEvent` message to `proto/` (contract-first, per the docs) that is
+- **Fix:** added a dedicated `OrderEvent` message to `proto/` (contract-first) that is
   the envelope for "what the gateway observed": identity + is_cancel + order_id + status + ts_millis.
   Regenerated Go (`make proto`) and Python (`make proto-python`) stubs from the one source.
 - **Lesson:** don't overload a request message as an event message — an event needs outcome + time
@@ -261,7 +261,7 @@ Format of each entry: **Symptom → Cause → Fix → Lesson.**
   per-order round-trip to Python. Documented as the explicit trade-off in ADR 0005; a hard
   synchronous pre-trade check is noted as future hardening.
 - **Lesson:** name the consistency model out loud. "Eventually consistent, self-clearing, post-trade"
-  is a precise, defensible description an reader can probe — far better than pretending it's
+  is a precise, defensible description you can probe — far better than pretending it's
   a hard pre-trade limit.
 
 ### Refactoring `publish_signal` from JSON dict to typed protobuf

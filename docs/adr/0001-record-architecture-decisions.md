@@ -4,7 +4,7 @@
 - **Date:** 2026-06-16
 
 ## Context
-This project is a learning + review showcase. The *reasoning* behind decisions matters as much
+This project is a learning showcase. The *reasoning* behind decisions matters as much
 as the code, both for future maintenance and for explaining the system at length.
 
 ## Decision
@@ -13,4 +13,4 @@ sequentially. Each ADR states context, the decision, and consequences.
 
 ## Consequences
 - A durable, reviewable trail of why the system is the way it is.
-- Ready-made review talking points.
+- A clear record of why each choice was made.

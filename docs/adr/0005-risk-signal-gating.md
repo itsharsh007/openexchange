@@ -26,7 +26,7 @@ engine.
   before the engine; a blocked account gets `422` with the risk reason and the attempt is still
   published to the `orders` topic (as REJECTED — a rejected attempt is itself a signal).
 
-## Key properties (the key trade-offs)
+## Key properties (the trade-offs)
 - **Fail-open.** If the broker or risk service is down, the gate simply stops receiving updates and
   no account is blocked. Blocking *all* trading because the risk sidecar is offline would be worse
   than the risk it mitigates — risk gating is a safety overlay, not a correctness gate on money (the
