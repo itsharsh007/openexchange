@@ -1,0 +1,62 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  font-variant-numeric: tabular-nums;
+}
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.header h2 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+.up {
+  color: var(--up);
+  font-weight: 600;
+}
+.down {
+  color: var(--down);
+  font-weight: 600;
+}
+.header small {
+  font-size: 0.72rem;
+  font-weight: 500;
+  opacity: 0.85;
+}
+.svg {
+  display: block;
+}
+.lineUp {
+  fill: none;
+  stroke: var(--up);
+  stroke-width: 1.6;
+}
+.lineDown {
+  fill: none;
+  stroke: var(--down);
+  stroke-width: 1.6;
+}
+.areaUp {
+  fill: var(--up);
+  fill-opacity: 0.12;
+  stroke: none;
+}
+.areaDown {
+  fill: var(--down);
+  fill-opacity: 0.12;
+  stroke: none;
+}
+.dotUp {
+  fill: var(--up);
+}
+.dotDown {
+  fill: var(--down);
+}
+.empty {
+  color: var(--muted);
+  font-size: 0.8rem;
+  padding: 20px 0;
+  text-align: center;
+}

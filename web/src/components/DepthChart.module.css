@@ -1,0 +1,82 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  font-variant-numeric: tabular-nums;
+}
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.header h2 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+.scale {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.canvas {
+  position: relative;
+}
+.svg {
+  display: block;
+  cursor: crosshair;
+}
+.bidArea {
+  fill: var(--up);
+  fill-opacity: 0.16;
+}
+.askArea {
+  fill: var(--down);
+  fill-opacity: 0.16;
+}
+.bidLine {
+  fill: none;
+  stroke: var(--up);
+  stroke-width: 1.5;
+}
+.askLine {
+  fill: none;
+  stroke: var(--down);
+  stroke-width: 1.5;
+}
+.mid {
+  stroke: var(--muted);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 0.6;
+}
+.guide {
+  stroke: var(--muted);
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+}
+.label {
+  fill: var(--muted);
+  font-size: 10px;
+}
+.empty {
+  color: var(--muted);
+  font-size: 0.8rem;
+  padding: 24px 0;
+  text-align: center;
+}
+/* Floating readout that follows the cursor. */
+.tooltip {
+  position: absolute;
+  top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-size: 0.72rem;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.tooltip span {
+  color: var(--muted);
+}
