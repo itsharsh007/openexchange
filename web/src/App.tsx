@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { getBook, getAccount } from "./api/client";
-import { ensureSession, demoAccountId } from "./api/session";
+import { ensureGuest, demoAccountId, refreshAccess, logout } from "./api/session";
+import { AUTH_ENABLED } from "./config";
 import { OrderBook } from "./components/OrderBook";
+import { DepthChart } from "./components/DepthChart";
 import { TradeTape } from "./components/TradeTape";
+import { PriceChart } from "./components/PriceChart";
+import { LoginScreen } from "./components/LoginScreen";
 import { OrderEntry } from "./components/OrderEntry";
 import { AccountPanel } from "./components/AccountPanel";
 import { RiskPanel } from "./components/RiskPanel";
@@ -43,9 +47,11 @@ export default function App() {
   const [trades, setTrades] = useState<Trade[]>([]);
   const [risk, setRisk] = useState<RiskSignal | null>(null);
   const [orders, setOrders] = useState<TrackedOrder[]>([]);
-  // Gate REST/WS until we hold a bearer token. The public dashboard fetches an
-  // anonymous demo session from the gateway; locally a build-time token may exist.
-  const [authReady, setAuthReady] = useState(false);
+  // Auth lifecycle. "loading" while we try to restore a session; "login" shows the
+  // auth screen (full-stack build only); "ready" once we hold a token. REST/WS are
+  // gated until ready. The public link skips straight to a guest session.
+  const [phase, setPhase] = useState<"loading" | "login" | "ready">("loading");
+  const authReady = phase === "ready";
   // The account this browser trades as — unique per session, so two visitors are
   // distinct traders whose orders cross. Falls back to the constant until ready.
   const [accountId, setAccountId] = useState(ACCOUNT_ID);
@@ -118,16 +124,41 @@ export default function App() {
     enabled: authReady,
   });
 
-  // ── Obtain a bearer token before any authenticated call. Runs once on mount.
-  useEffect(() => {
-    ensureSession()
-      .then(() => {
-        setAccountId(demoAccountId() || ACCOUNT_ID);
-        setAuthReady(true);
-        refetchAccount();
-      })
-      .catch((err) => console.error("[auth] could not obtain demo session", err));
+  // Called once a token has been obtained (guest, login, or restored session).
+  const onAuthed = useCallback(() => {
+    setAccountId(demoAccountId() || ACCOUNT_ID);
+    setPhase("ready");
+    refetchAccount();
   }, [refetchAccount]);
+
+  // ── Establish a session on mount. With auth enabled (full stack) we first try to
+  // restore via a stored refresh token, else show the login screen. On the public
+  // link we go straight to a frictionless guest session.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (AUTH_ENABLED) {
+        const restored = await refreshAccess();
+        if (cancelled) return;
+        restored ? onAuthed() : setPhase("login");
+      } else {
+        try {
+          await ensureGuest();
+          if (!cancelled) onAuthed();
+        } catch (err) {
+          console.error("[auth] could not obtain guest session", err);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [onAuthed]);
+
+  const signOut = useCallback(() => {
+    logout();
+    setPhase("login");
+  }, []);
 
   // ── Seed the book once via REST so the ladder isn't empty before first WS
   // frame. WHY: WS gives deltas/snapshots going forward, but on initial load we
@@ -141,20 +172,36 @@ export default function App() {
     });
   }, [authReady]);
 
+  // Auth gate (full-stack build only): show the login screen until a token exists.
+  if (phase === "login") {
+    return <LoginScreen onAuthed={onAuthed} />;
+  }
+
   return (
     <div className={styles.app}>
       <header className={styles.topbar}>
         <h1>
           OpenExchange <span className={styles.tag}>simulation</span>
         </h1>
-        <ConnBadge state={connectionState} />
+        <div className={styles.headerRight}>
+          <ConnBadge state={connectionState} />
+          {AUTH_ENABLED && authReady && (
+            <button className={styles.signout} onClick={signOut}>
+              sign out
+            </button>
+          )}
+        </div>
       </header>
 
       <main className={styles.grid}>
         <div className={`${styles.card} ${styles.bookCard}`}>
           <OrderBook book={book} />
+          <div className={styles.divider} />
+          <DepthChart book={book} />
         </div>
         <div className={`${styles.card} ${styles.tapeCard}`}>
+          <PriceChart trades={trades} />
+          <div className={styles.divider} />
           <TradeTape trades={trades} />
         </div>
         <div className={styles.card}>

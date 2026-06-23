@@ -1,5 +1,5 @@
 import { API_BASE } from "../config";
-import { authToken } from "./session";
+import { authToken, refreshAccess } from "./session";
 import type {
   AccountSnapshot,
   BookSnapshot,
@@ -31,7 +31,10 @@ export class ApiError extends Error {
 }
 
 // A single fetch wrapper that parses JSON and throws ApiError on failure.
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+// On a 401 it transparently tries to refresh the access token once, then retries
+// — so a logged-in user whose short access token expired mid-session doesn't see
+// an error (the rotating refresh token mints a new one behind the scenes).
+async function request<T>(path: string, init?: RequestInit, retry = true): Promise<T> {
   const tok = authToken();
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
@@ -41,6 +44,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...(init?.headers ?? {}),
     },
   });
+
+  if (res.status === 401 && retry && (await refreshAccess())) {
+    return request<T>(path, init, false);
+  }
 
   if (!res.ok) {
     // Try to surface the gateway's error body; fall back to status text.
