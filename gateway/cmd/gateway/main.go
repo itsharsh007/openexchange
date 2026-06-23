@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/itsharsh007/openexchange/gateway/internal/api"
+	"github.com/itsharsh007/openexchange/gateway/internal/auth"
 	"github.com/itsharsh007/openexchange/gateway/internal/cache"
 	"github.com/itsharsh007/openexchange/gateway/internal/config"
 	"github.com/itsharsh007/openexchange/gateway/internal/engine"
@@ -54,6 +55,9 @@ func main() {
 	cfg, warnings := config.Load()
 	for _, w := range warnings {
 		log.Printf("WARN %s", w)
+	}
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("%v", err)
 	}
 	log.Printf("config %s", cfg)
 
@@ -125,12 +129,32 @@ func main() {
 
 	// Middleware + routes.
 	rl := middleware.NewRateLimiter(cfg.RateLimitPerSecond, cfg.RateLimitBurst)
-	auth := middleware.NewJWTAuth(cfg.JWTSecret)
+	jwtAuth := middleware.NewJWTAuth(cfg.JWTSecret)
 	srv := api.NewServer(cfg, eng, c, hub, orderPub, riskGate)
 
+	// Password auth (signup/login/refresh) — only when a Postgres DSN is set.
+	// The public link runs without it and keeps the anonymous guest path.
+	if cfg.AuthEnabled() {
+		db, err := auth.OpenDB(cfg.DatabaseURL)
+		if err != nil {
+			log.Fatalf("auth: %v", err)
+		}
+		defer db.Close()
+		if err := db.Ping(); err != nil {
+			log.Fatalf("auth: cannot reach Postgres for user store: %v", err)
+		}
+		tokens := auth.NewTokenService(cfg.JWTSecret, cfg.AccessTokenTTL, cfg.RefreshTokenTTL)
+		srv.WithAuth(auth.NewPostgresStore(db), tokens)
+		log.Printf("auth: password auth ENABLED (Postgres user store)")
+	} else {
+		log.Printf("auth: password auth disabled (no DATABASE_URL) — guest/demo only")
+	}
+
+	// Middleware chain (outermost first): security headers -> CORS -> routes.
+	handler := middleware.SecurityHeaders(middleware.CORS(cfg.CORSAllowedOrigin)(srv.Routes(rl, jwtAuth)))
 	httpServer := &http.Server{
 		Addr:              cfg.ListenAddr,
-		Handler:           middleware.CORS(cfg.CORSAllowedOrigin)(srv.Routes(rl, auth)),
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second, // mitigate Slowloris
 	}
 

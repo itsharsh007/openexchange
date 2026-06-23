@@ -12,7 +12,7 @@ import (
 // ─────────────────────────────────────────────────────────────────────────────
 // Token-bucket rate limiter (per client).
 //
-// WHY token bucket (the review answer):
+// WHY token bucket:
 //   - It allows short BURSTS (up to `burst` tokens) while bounding the SUSTAINED
 //     rate to `ratePerSec`. A trader legitimately fires a few orders back-to-
 //     back; a fixed-window counter would either reject those or allow a 2x

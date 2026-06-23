@@ -29,10 +29,20 @@ type Config struct {
 	RedisAddr string
 	// JWTSecret is the HMAC secret used to verify bearer tokens.
 	JWTSecret string
-	// CORSAllowedOrigin is the value sent in Access-Control-Allow-Origin. Defaults
-	// to "*" for local dev; pin it to the real dashboard origin in production so the
-	// browser only honors cross-origin calls from the trusted frontend.
+	// CORSAllowedOrigin is the raw CORS_ALLOWED_ORIGIN value: "*", a single origin,
+	// or a comma-separated allowlist. The CORS middleware reflects a request's
+	// Origin only when it's in the list (see middleware.CORS).
 	CORSAllowedOrigin string
+
+	// DatabaseURL is the Postgres DSN for the users table. Empty (the public link)
+	// disables password auth → guest-only access via /auth/demo.
+	DatabaseURL string
+	// AccessTokenTTL / RefreshTokenTTL bound the lifetimes of the two JWT kinds.
+	AccessTokenTTL  time.Duration
+	RefreshTokenTTL time.Duration
+	// AllowInsecureSecret lets the gateway boot with the well-known default
+	// JWT_SECRET (for local dev). Production must set a real secret instead.
+	AllowInsecureSecret bool
 
 	// DemoAuthEnabled exposes POST /auth/demo, which mints a short-lived bearer
 	// token for an anonymous demo session. It lets the public dashboard work
@@ -81,8 +91,8 @@ func Load() (*Config, []string) {
 	var warnings []string
 
 	port := getenv("PORT", "8080")
-	jwtSecret := getenv("JWT_SECRET", "dev-only-change-me")
-	if jwtSecret == "dev-only-change-me" {
+	jwtSecret := getenv("JWT_SECRET", defaultJWTSecret)
+	if jwtSecret == defaultJWTSecret {
 		warnings = append(warnings,
 			"JWT_SECRET is the insecure dev default; set a strong secret before exposing the gateway")
 	}
@@ -98,8 +108,12 @@ func Load() (*Config, []string) {
 		EngineGRPCAddr:     getenv("ENGINE_GRPC_ADDR", "localhost:50051"),
 		EngineMode:         getenv("ENGINE_MODE", "grpc"),
 		RedisAddr:          getenv("REDIS_ADDR", "localhost:6379"),
-		JWTSecret:          jwtSecret,
-		CORSAllowedOrigin:  corsOrigin,
+		JWTSecret:           jwtSecret,
+		CORSAllowedOrigin:   corsOrigin,
+		DatabaseURL:         getenv("DATABASE_URL", ""),
+		AccessTokenTTL:      getenvDuration("ACCESS_TOKEN_TTL", 15*time.Minute),
+		RefreshTokenTTL:     getenvDuration("REFRESH_TOKEN_TTL", 7*24*time.Hour),
+		AllowInsecureSecret: getenvBool("ALLOW_INSECURE_SECRET", false),
 		DemoAuthEnabled:    getenvBool("DEMO_AUTH_ENABLED", true),
 		DemoAccountID:      getenv("DEMO_ACCOUNT_ID", "acct-demo-1"),
 		DemoSessionTTL:     getenvDuration("DEMO_SESSION_TTL", 12*time.Hour),
@@ -116,6 +130,24 @@ func Load() (*Config, []string) {
 	}
 	return cfg, warnings
 }
+
+// defaultJWTSecret is the well-known insecure secret used for zero-config local dev.
+const defaultJWTSecret = "dev-only-change-me"
+
+// Validate returns a fatal configuration error the operator must fix before the
+// gateway will start. Unlike Load's warnings, these are refusals — the one case
+// today is booting a non-dev deploy on the default JWT secret.
+func (c *Config) Validate() error {
+	if c.JWTSecret == defaultJWTSecret && !c.AllowInsecureSecret {
+		return fmt.Errorf("refusing to start: JWT_SECRET is the insecure default. " +
+			"Set a strong JWT_SECRET, or ALLOW_INSECURE_SECRET=1 for local dev")
+	}
+	return nil
+}
+
+// AuthEnabled reports whether password auth (signup/login) should be wired — i.e.
+// a Postgres DSN is configured.
+func (c *Config) AuthEnabled() bool { return c.DatabaseURL != "" }
 
 // String renders config for boot logging WITHOUT leaking the secret.
 func (c *Config) String() string {

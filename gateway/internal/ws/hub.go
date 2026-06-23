@@ -1,7 +1,7 @@
 // Package ws implements a WebSocket fan-out hub: one goroutine owns all client
 // state, and clients are registered/unregistered/broadcast-to over channels.
 //
-// WHY this design (the review story):
+// WHY this design:
 //   - A single "hub" goroutine is the *only* writer of the clients map. That
 //     removes the need for a mutex on the hot broadcast path and makes the
 //     concurrency trivially correct (the Go memory model guarantees the map is

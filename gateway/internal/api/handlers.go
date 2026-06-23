@@ -12,6 +12,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
+	"github.com/itsharsh007/openexchange/gateway/internal/auth"
 	"github.com/itsharsh007/openexchange/gateway/internal/cache"
 	"github.com/itsharsh007/openexchange/gateway/internal/config"
 	"github.com/itsharsh007/openexchange/gateway/internal/engine"
@@ -42,6 +43,10 @@ type Server struct {
 	hub    *ws.Hub
 	orders orderfeed.Publisher
 	risk   RiskGate
+	// Optional password-auth deps, set via WithAuth (nil on the public link →
+	// only the anonymous /auth/demo guest path is offered).
+	users  auth.UserStore
+	tokens *auth.TokenService
 }
 
 // NewServer constructs the API server with its dependencies injected. orders may be
@@ -75,6 +80,15 @@ func (s *Server) Routes(rl *middleware.RateLimiter, auth *middleware.JWTAuth) ht
 	// point) and only registered when DEMO_AUTH_ENABLED is set.
 	if s.cfg.DemoAuthEnabled {
 		mux.Handle("POST /auth/demo", rl.Middleware(http.HandlerFunc(s.handleDemoSession)))
+	}
+
+	// Password-backed auth (full stack only). Rate-limited but unauthenticated —
+	// they're the surfaces that ESTABLISH auth. Registered only when a user store
+	// is wired, so the public link cleanly offers guest-only access.
+	if s.authEnabled() {
+		mux.Handle("POST /auth/signup", rl.Middleware(http.HandlerFunc(s.handleSignup)))
+		mux.Handle("POST /auth/login", rl.Middleware(http.HandlerFunc(s.handleLogin)))
+		mux.Handle("POST /auth/refresh", rl.Middleware(http.HandlerFunc(s.handleRefresh)))
 	}
 
 	mux.Handle("POST /orders", protect(s.handleSubmit))

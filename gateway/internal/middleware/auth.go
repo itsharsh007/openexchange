@@ -50,6 +50,15 @@ func (a *JWTAuth) Middleware(next http.Handler) http.Handler {
 			return
 		}
 
+		// A refresh token must NOT be accepted as an access token — it only works
+		// at POST /auth/refresh. Reject any token carrying kind="refresh".
+		if claims, ok := token.Claims.(jwt.MapClaims); ok {
+			if kind, _ := claims["kind"].(string); kind == "refresh" {
+				unauthorized(w, "refresh token cannot be used here")
+				return
+			}
+		}
+
 		// Pull the subject (account id) so handlers can attribute orders.
 		sub, _ := token.Claims.GetSubject()
 		ctx := context.WithValue(r.Context(), accountIDKey, sub)
