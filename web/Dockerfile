@@ -12,8 +12,10 @@ COPY . .
 # Override at build time: --build-arg VITE_API_BASE=... etc.
 ARG VITE_API_BASE
 ARG VITE_WS_URL
+ARG VITE_AUTH_ENABLED
 ENV VITE_API_BASE=$VITE_API_BASE
 ENV VITE_WS_URL=$VITE_WS_URL
+ENV VITE_AUTH_ENABLED=$VITE_AUTH_ENABLED
 RUN npm run build
 
 # ── Stage 2: serve with nginx ────────────────────────────────────────────────
