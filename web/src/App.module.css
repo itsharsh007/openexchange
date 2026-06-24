@@ -42,6 +42,53 @@
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
+/* Symbol switcher tabs (header, centered) */
+.symbols {
+  display: flex;
+  gap: 4px;
+}
+.symbolTab {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 5px;
+  padding: 4px 12px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.symbolTab:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.symbolActive {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #04121f;
+}
+
+/* Pause/resume bots toggle */
+.simToggle {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 5px;
+  padding: 3px 10px;
+  font-size: 0.78rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.simToggle:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.simPaused {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .grid {
   display: grid;
   grid-template-columns: 1.2fr 0.9fr 1fr;

@@ -91,3 +91,23 @@ export function getBook(symbol: string, depth = 20): Promise<BookSnapshot> {
 export function getAccount(): Promise<AccountSnapshot> {
   return request<AccountSnapshot>("/account");
 }
+
+/** Market-simulator state. `enabled` is false (404) when no bots run (full stack). */
+export interface SimState {
+  enabled: boolean;
+  paused: boolean;
+}
+
+/** Whether the bot market simulator is running and whether it's paused. */
+export async function getSimState(): Promise<SimState> {
+  try {
+    return await request<SimState>("/sim/state");
+  } catch {
+    return { enabled: false, paused: false }; // route absent → no sim on this gateway
+  }
+}
+
+/** Pause (true) or resume (false) the bot market simulator. Returns new state. */
+export function setSimPaused(paused: boolean): Promise<SimState> {
+  return request<SimState>(paused ? "/sim/pause" : "/sim/resume", { method: "POST" });
+}

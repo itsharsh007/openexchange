@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useWebSocket } from "./hooks/useWebSocket";
-import { getBook, getAccount } from "./api/client";
+import { getBook, getAccount, getSimState, setSimPaused, type SimState } from "./api/client";
 import { ensureGuest, demoAccountId, refreshAccess, logout } from "./api/session";
 import { AUTH_ENABLED } from "./config";
 import { OrderBook } from "./components/OrderBook";
@@ -23,10 +23,9 @@ import type {
 } from "./types";
 import styles from "./App.module.css";
 
-// Demo constants. In a real build the symbol comes from a selector and the
-// account from the authenticated session. AAPL is one of the seeded symbols the
-// gateway serves a book for (see scripts/seed.sh).
-const SYMBOL = "AAPL";
+// Tradable symbols, shown as tabs in the header. These match the symbols the
+// gateway seeds a book for (and the market simulator trades).
+const SYMBOLS = ["AAPL", "TSLA", "MSFT"] as const;
 const ACCOUNT_ID = "acct-demo-1";
 const CHANNELS: WsChannel[] = ["book", "trades", "risk"];
 
@@ -47,6 +46,14 @@ export default function App() {
   const [trades, setTrades] = useState<Trade[]>([]);
   const [risk, setRisk] = useState<RiskSignal | null>(null);
   const [orders, setOrders] = useState<TrackedOrder[]>([]);
+  // Selected symbol (header tabs). The WS hub broadcasts every symbol to every
+  // client, so we filter incoming book/trade frames by this; a ref keeps the WS
+  // handler reading the latest value without re-subscribing.
+  const [symbol, setSymbol] = useState<string>(SYMBOLS[0]);
+  const symbolRef = useRef(symbol);
+  symbolRef.current = symbol;
+  // Market-simulator state (bots). enabled=false on the full stack (no /sim route).
+  const [sim, setSim] = useState<SimState>({ enabled: false, paused: false });
   // Auth lifecycle. "loading" while we try to restore a session; "login" shows the
   // auth screen (full-stack build only); "ready" once we hold a token. REST/WS are
   // gated until ready. The public link skips straight to a guest session.
@@ -86,10 +93,11 @@ export default function App() {
   const handleMessage = useCallback((msg: ServerMessage) => {
     switch (msg.type) {
       case "book":
-        // Full snapshot replaces the book each frame (gateway sends top-N).
-        setBook(msg.data);
+        // The hub broadcasts every symbol; only show the one we're viewing.
+        if (msg.data.symbol === symbolRef.current) setBook(msg.data);
         break;
       case "trade":
+        if (msg.data.symbol !== symbolRef.current) break; // not the viewed symbol
         setTrades((prev) => [msg.data, ...prev].slice(0, MAX_TRADES));
         // A trade may have touched this account (as taker OR resting maker), so
         // refresh cash/P&L/positions. Cheap at demo volume; always correct.
@@ -119,7 +127,7 @@ export default function App() {
 
   const { connectionState } = useWebSocket({
     channels: CHANNELS,
-    symbol: SYMBOL,
+    symbol,
     onMessage: handleMessage,
     enabled: authReady,
   });
@@ -160,17 +168,29 @@ export default function App() {
     setPhase("login");
   }, []);
 
-  // ── Seed the book once via REST so the ladder isn't empty before first WS
-  // frame. WHY: WS gives deltas/snapshots going forward, but on initial load we
-  // want immediate state. Guarded so it runs once.
-  const seeded = useRef(false);
+  // ── Seed the book via REST whenever the symbol changes (and on first ready) so
+  // the ladder/tape reflect the new symbol immediately, before the next WS frame.
   useEffect(() => {
-    if (!authReady || seeded.current) return; // need a token before the REST call
-    seeded.current = true;
-    getBook(SYMBOL).then(setBook).catch(() => {
+    if (!authReady) return; // need a token before the REST call
+    setBook(null);
+    setTrades([]);
+    getBook(symbol).then(setBook).catch(() => {
       // Gateway may be down during dev; the WS will fill the book when it's up.
     });
+  }, [authReady, symbol]);
+
+  // ── Discover whether the bot simulator is running (so we show the toggle only
+  // when it makes sense — i.e. the local/public demo, not the full stack).
+  useEffect(() => {
+    if (!authReady) return;
+    getSimState().then(setSim).catch(() => {});
   }, [authReady]);
+
+  const toggleSim = useCallback(() => {
+    setSimPaused(!sim.paused)
+      .then(setSim)
+      .catch(() => {});
+  }, [sim.paused]);
 
   // Auth gate (full-stack build only): show the login screen until a token exists.
   if (phase === "login") {
@@ -183,7 +203,27 @@ export default function App() {
         <h1>
           OpenExchange <span className={styles.tag}>simulation</span>
         </h1>
+        <nav className={styles.symbols} aria-label="symbol">
+          {SYMBOLS.map((s) => (
+            <button
+              key={s}
+              className={`${styles.symbolTab} ${s === symbol ? styles.symbolActive : ""}`}
+              onClick={() => setSymbol(s)}
+            >
+              {s}
+            </button>
+          ))}
+        </nav>
         <div className={styles.headerRight}>
+          {sim.enabled && (
+            <button
+              className={`${styles.simToggle} ${sim.paused ? styles.simPaused : ""}`}
+              onClick={toggleSim}
+              title="Pause or resume the bot market makers"
+            >
+              {sim.paused ? "▶ Resume bots" : "⏸ Pause bots"}
+            </button>
+          )}
           <ConnBadge state={connectionState} />
           {AUTH_ENABLED && authReady && (
             <button className={styles.signout} onClick={signOut}>
@@ -207,7 +247,7 @@ export default function App() {
         <div className={styles.card}>
           <OrderEntry
             accountId={accountId}
-            symbol={SYMBOL}
+            symbol={symbol}
             onOptimisticAdd={addOptimistic}
             onReconcile={reconcile}
           />
