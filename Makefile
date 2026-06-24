@@ -1,6 +1,7 @@
 COMPOSE := docker compose -f deploy/docker-compose.yml
+COMPOSE_DEMO := docker compose -f deploy/docker-compose.demo.yml
 
-.PHONY: help up infra down seed test logs colima-start colima-stop fmt proto proto-python deploy-web
+.PHONY: help up infra down seed test logs colima-start colima-stop fmt proto proto-python deploy-web demo demo-down
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -22,6 +23,18 @@ up: ## Start the full stack (infra + services + Prometheus + Grafana)
 	@echo "  Gateway   → http://localhost:8080"
 	@echo "  Grafana   → http://localhost:3000"
 	@echo "  Prometheus→ http://localhost:9090"
+
+demo: ## Live demo (what the public link runs): gateway w/ in-process engine + bots, no heavy stack
+	$(COMPOSE_DEMO) up -d --build
+	@echo ""
+	@echo "  Live demo up — a moving market with bot traders, no Java/Kafka/DB."
+	@echo "  Dashboard → http://localhost:5173   (open it and place an order)"
+	@echo "  Gateway   → http://localhost:8080"
+	@echo "  Pause the bots from the dashboard header to take over the book yourself."
+	@echo "  Stop with: make demo-down"
+
+demo-down: ## Stop the live demo stack
+	$(COMPOSE_DEMO) down
 
 down: ## Stop everything (volumes are kept; use 'down -v' to wipe data)
 	$(COMPOSE) down

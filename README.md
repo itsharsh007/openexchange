@@ -143,6 +143,21 @@ Then open the dashboard at **http://localhost:5173**, place a **BUY** and a cros
 watch them match — a trade prints on the tape, the depth chart and price chart move, the ledger
 updates, and the Risk/ML panel reacts.
 
+### …or just the live demo (`make demo`)
+
+Want the **public-link experience locally** without the heavy stack? One command:
+
+```bash
+make demo        # gateway (in-process engine + bot traders) + dashboard — two containers
+make demo-down   # stop it
+```
+
+This runs the gateway with the matching engine **in-process** (`ENGINE_MODE=local`) and bot
+market-makers quoting and trading all three symbols — a live, moving market at
+**http://localhost:5173** with no Java engine, Kafka, Postgres, or Redis. Place orders against the
+bots, or **pause the bots** from the header to take over the book yourself. (`make up` is the full
+real stack; `make demo` is the lightweight always-live market.)
+
 ## Try it without installing anything
 
 | | What you get | Setup |

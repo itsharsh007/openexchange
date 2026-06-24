@@ -1,0 +1,56 @@
+# OpenExchange — lightweight "live demo" stack (the same thing the public link runs).
+#
+#   make demo        → gateway (in-process engine + bots) + dashboard, nothing else
+#   make demo-down   → stop it
+#
+# This is the public-link experience on your own machine: the Go gateway runs the
+# matching engine IN-PROCESS (ENGINE_MODE=local) with bot market-makers quoting and
+# trading all three symbols, so there's a live, moving market with zero setup — no
+# Java engine, no Kafka, no Postgres, no Redis. Two containers, light on the CPU.
+#
+# For the full real stack (Java engine, Kafka, Postgres, the ML risk loop) use
+# `make up` with deploy/docker-compose.yml instead.
+
+name: openexchange-demo
+
+services:
+
+  gateway:
+    build:
+      context: ../gateway
+    environment:
+      # In-process matching engine — no JVM/gRPC engine needed.
+      ENGINE_MODE: local
+      # Bot market-makers: a live, moving market with no visitors. (On by default;
+      # set MARKET_SIM=false to start with a quiet book you populate yourself.)
+      MARKET_SIM: "true"
+      PORT: "8080"
+      # Local-only: boot on the well-known dev JWT secret without refusing to start.
+      # NEVER set this on a real deploy — provide a strong JWT_SECRET instead.
+      ALLOW_INSECURE_SECRET: "1"
+      # No DATABASE_URL → password auth is off; the dashboard uses the frictionless
+      # guest session (POST /auth/demo), exactly like the public link.
+    ports:
+      - "8080:8080"   # REST + WebSocket + /metrics
+    healthcheck:
+      # Distroless image has no shell; the binary self-probes /healthz.
+      test: ["CMD", "/gateway", "healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  web:
+    build:
+      context: ../web
+      args:
+        # Same-origin: relative API base + /ws path, proxied to the gateway by the
+        # web container's nginx (see web/nginx.conf).
+        VITE_API_BASE: ""
+        VITE_WS_URL: "/ws"
+        # No Postgres here → no password auth; go straight to the guest session
+        # (matches the public GitHub Pages build).
+        VITE_AUTH_ENABLED: "false"
+    depends_on:
+      gateway: { condition: service_healthy }
+    ports:
+      - "5173:80"   # nginx serves the Vite static bundle
