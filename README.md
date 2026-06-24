@@ -48,10 +48,12 @@ A trading exchange forces the whole surface of modern backend engineering into o
 ## Highlights
 
 - 🧩 **Real matching engine** — limit & market orders, partial fills, cancels, price-time priority, emits trades to Kafka.
+- 🤝 **Self-match prevention** — an account never trades against its own resting orders; they're skipped and stay on the book ([ADR 0008](docs/adr/0008-self-match-prevention.md)).
 - ⚡ **~16k orders/sec** write path and **~18k reads/sec** (Redis-cached) on a 4-core box — [numbers below](#performance--resilience).
 - 🔐 **Real auth** — JWT access + refresh tokens, bcrypt-hashed passwords (full stack), with a frictionless guest mode for the public demo.
-- 📈 **Live dashboard** — order book, **cumulative depth chart**, **streaming price chart**, trade tape, account P&L, and a risk/ML panel — all over one WebSocket.
-- 🤖 **ML in the loop** — the Python service scores every trade and can gate the order flow in real time.
+- 📈 **Live dashboard** — order book, **cumulative depth chart**, **streaming price chart**, trade tape, account P&L, and a risk/ML panel — all over one WebSocket. Switch between **three symbols** (AAPL / TSLA / MSFT) from the header.
+- 🤖 **Always-live market** — bot market-makers continuously quote and trade all three symbols, so the public link is a moving market even with zero visitors. One click **pauses the bots** to take the book over yourself.
+- 🧠 **ML in the loop** — the Python service scores every trade and can gate the order flow in real time.
 - 🛡️ **Resilient** — kill the engine mid-load and the gateway degrades cleanly (`502`, never a crash); the ledger stays balanced; it recovers on restart.
 - 📊 **Observable** — every service exposes `/metrics`; Grafana shows latency, throughput, and fill rates.
 - ☁️ **Deployed, free** — public dashboard on GitHub Pages, gateway on Render, one-click full stack in Codespaces.
@@ -71,6 +73,14 @@ over one WebSocket:
 | <img src="docs/assets/screenshots/orderbook-depth.png" alt="order book and depth chart" width="100%"> | <img src="docs/assets/screenshots/price-tape.png" alt="price chart and trade tape" width="100%"> |
 
 > ▶ Or just open the [**live dashboard**](https://itsharsh007.github.io/openexchange/) — it's a real shared exchange.
+
+The **Grafana** dashboard (full stack) — order-flow rate, order latency `p50/p95/p99`, risk-gate
+reject rate, exposure-score distribution, WebSocket clients, and Kafka consumer throughput, all
+scraped from each service's `/metrics`:
+
+<p align="center">
+  <img src="docs/assets/screenshots/grafana.png" alt="OpenExchange Grafana observability dashboard" width="100%">
+</p>
 
 ## How an order flows
 
@@ -137,7 +147,7 @@ updates, and the Risk/ML panel reacts.
 
 | | What you get | Setup |
 |---|---|---|
-| [**▶ Live dashboard**](https://itsharsh007.github.io/openexchange/) | A **real shared exchange** — your orders match against other visitors live. Open two tabs and trade with yourself, or send a friend the link. | none — just click |
+| [**▶ Live dashboard**](https://itsharsh007.github.io/openexchange/) | A **real, always-live exchange** — bot market-makers quote and trade AAPL / TSLA / MSFT around the clock, so there's a moving market the moment you land. Your orders match against the bots and other visitors live; pause the bots to take over the book yourself. | none — just click |
 | [**🚀 Open in Codespaces**](https://codespaces.new/itsharsh007/openexchange) | The **full system** — Java engine, Kafka, Postgres, and the ML risk loop | one click → `make up && make seed` (~3 min) |
 
 **Live endpoints:** dashboard → [itsharsh007.github.io/openexchange](https://itsharsh007.github.io/openexchange/) · gateway → [openexchange.onrender.com/healthz](https://openexchange.onrender.com/healthz) · WS → `wss://openexchange.onrender.com/ws`

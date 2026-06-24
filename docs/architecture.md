@@ -100,6 +100,11 @@ Authoritative source of truth for order state. Holds an in-memory **order book p
 - Matching: an incoming order is checked against the opposite side's best price; fills are produced
   in **price, then time** priority until the order is filled or no longer crosses.
 - Supports LIMIT and MARKET orders, partial fills, cancel, and amend.
+- **Self-match prevention:** an incoming order never executes against the *same account's* resting
+  orders — they're skipped (held aside, then restored) so the account's own liquidity keeps its
+  queue position while the order still fills against everyone else at that price. See
+  [ADR 0008](adr/0008-self-match-prevention.md); implemented identically in the Java engine and the
+  Go in-process engine.
 
 **Concurrency:** one writer thread per symbol consuming a command queue. This avoids locks on the
 hot path while keeping each book strictly serialized — easy to reason about and fast.
@@ -110,6 +115,21 @@ hot path while keeping each book strictly serialized — easy to reason about an
 The network edge. REST for order submit/cancel, WebSocket fan-out for live book + trades, gRPC
 client to the engine. Cross-cutting concerns: JWT auth, token-bucket rate limiting, request
 validation, Redis caching of top-of-book.
+
+**Two engine modes.** `ENGINE_MODE=grpc` (full stack) forwards to the Java engine over gRPC.
+`ENGINE_MODE=local` runs a real in-process matching engine inside the gateway — same matching and
+self-match rules, an in-memory ledger, no JVM/Kafka/DB. This is what powers the always-on public
+demo.
+
+**Market simulator (local mode only).** When the in-process engine is active the gateway runs bot
+accounts (`sim-mm` maker, `sim-taker-a/b` takers) that random-walk a mid price and continuously
+quote and trade all demo symbols, so the public link is a live, moving market with zero visitors.
+It's controllable at runtime: `GET /sim/state`, `POST /sim/pause`, `POST /sim/resume` — the
+dashboard exposes these as a one-click **pause/resume bots** toggle. Disabled by default on the full
+stack (no `/sim` route), so the toggle only appears where bots actually run.
+
+The WS hub broadcasts every symbol to every client; the dashboard filters by the symbol selected in
+its header tabs (AAPL / TSLA / MSFT).
 
 ### Risk / ML (`risk/`, Python + FastAPI)
 Kafka consumer building a feature store in Postgres. Three models:
