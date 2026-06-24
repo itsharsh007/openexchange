@@ -61,14 +61,18 @@ func main() {
 	}
 	log.Printf("config %s", cfg)
 
+	// Demo symbols traded on the public link / standalone gateway.
+	demoSymbols := []string{"AAPL", "TSLA", "MSFT"}
+
 	// Engine client: real gRPC adapter to the Java matching engine, or an in-process
 	// mock (ENGINE_MODE=mock) so the gateway can run standalone for demos/local dev.
 	var eng engine.EngineClient
-	if cfg.EngineMode == "mock" || cfg.EngineMode == "local" {
+	localEngine := cfg.EngineMode == "mock" || cfg.EngineMode == "local"
+	if localEngine {
 		// In-process matching engine: a real, shared limit order book so the gateway
 		// runs a multiplayer exchange standalone (no JVM/Kafka). Seeded with starter
 		// liquidity for the demo symbols so the first visitor sees a populated book.
-		eng = engine.NewLocalEngine("AAPL", "TSLA", "MSFT")
+		eng = engine.NewLocalEngine(demoSymbols...)
 		log.Printf("engine: LOCAL in-process matching engine (ENGINE_MODE=%s) — real matching, seeded book", cfg.EngineMode)
 	} else {
 		// grpc.NewClient is lazy, so this does not block on a live engine — each RPC
@@ -148,6 +152,16 @@ func main() {
 		log.Printf("auth: password auth ENABLED (Postgres user store)")
 	} else {
 		log.Printf("auth: password auth disabled (no DATABASE_URL) — guest/demo only")
+	}
+
+	// Market simulator: bot accounts that keep the in-process book alive (moving
+	// price, streaming tape, populated depth) so the public link is impressive with
+	// zero visitors. Only for the LocalEngine; the full stack uses `make seed`.
+	if localEngine && cfg.MarketSim {
+		simCtx, stopSim := context.WithCancel(context.Background())
+		srv.StartMarketSim(simCtx, demoSymbols, cfg.MarketSimInterval, time.Now().UnixNano())
+		defer stopSim()
+		log.Printf("market sim: ENABLED (%d symbols, every %s)", len(demoSymbols), cfg.MarketSimInterval)
 	}
 
 	// Middleware chain (outermost first): security headers -> CORS -> routes.

@@ -47,6 +47,9 @@ type Server struct {
 	// only the anonymous /auth/demo guest path is offered).
 	users  auth.UserStore
 	tokens *auth.TokenService
+	// Market simulator, set via StartMarketSim (nil unless running the in-process
+	// engine). When present, the /sim/* control routes are registered.
+	sim *marketSim
 }
 
 // NewServer constructs the API server with its dependencies injected. orders may be
@@ -96,6 +99,14 @@ func (s *Server) Routes(rl *middleware.RateLimiter, auth *middleware.JWTAuth) ht
 	mux.Handle("GET /book/{symbol}", protect(s.handleBook))
 	mux.Handle("GET /account", protect(s.handleAccount))
 	mux.Handle("GET /ws", protect(http.HandlerFunc(s.hub.ServeWS)))
+
+	// Market-sim controls — only when the simulator is running (the public/local
+	// demo). Lets the dashboard pause/resume the bots with one click.
+	if s.sim != nil {
+		mux.Handle("GET /sim/state", protect(s.handleSimState))
+		mux.Handle("POST /sim/pause", protect(s.handleSimPause))
+		mux.Handle("POST /sim/resume", protect(s.handleSimResume))
+	}
 
 	return mux
 }
@@ -169,16 +180,7 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 	// this loop is a no-op. With the in-process LocalEngine there is no Kafka, so
 	// the engine returns the executions in the ack and we broadcast them, which is
 	// what lets the maker's browser see the fill in a multiplayer session.
-	go func(trades []engine.Trade, symbol string) {
-		for _, t := range trades {
-			s.hub.Broadcast(struct {
-				Type string       `json:"type"`
-				Data engine.Trade `json:"data"`
-			}{Type: "trade", Data: t})
-			metrics.TradesBroadcastTotal.Inc()
-		}
-		s.broadcastBook(symbol)
-	}(ack.Trades, o.Symbol)
+	go s.broadcastFills(ack.Trades, o.Symbol)
 
 	status := http.StatusCreated
 	if ack.Status == engine.StatusRejected {
@@ -248,6 +250,25 @@ func (s *Server) handleBook(w http.ResponseWriter, r *http.Request) {
 	s.cache.SetBook(ctx, depth, snap)
 	w.Header().Set("X-Cache", "MISS")
 	writeJSON(w, http.StatusOK, snap)
+}
+
+// broadcastTrades fans each execution out to all WS clients as a "trade" message
+// (the maker side never called this gateway, so this is how it sees the fill live).
+func (s *Server) broadcastTrades(trades []engine.Trade) {
+	for _, t := range trades {
+		s.hub.Broadcast(struct {
+			Type string       `json:"type"`
+			Data engine.Trade `json:"data"`
+		}{Type: "trade", Data: t})
+		metrics.TradesBroadcastTotal.Inc()
+	}
+}
+
+// broadcastFills broadcasts a set of executions then a fresh book snapshot for the
+// symbol. Shared by the order path and the market simulator.
+func (s *Server) broadcastFills(trades []engine.Trade, symbol string) {
+	s.broadcastTrades(trades)
+	s.broadcastBook(symbol)
 }
 
 // broadcastBook fetches the latest book snapshot for symbol and pushes it to all

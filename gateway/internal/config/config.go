@@ -25,6 +25,15 @@ type Config struct {
 	// EngineMode selects the engine client: "grpc" (real engine, default) or "mock"
 	// (in-process MockClient) so the gateway can run/demo standalone without the JVM.
 	EngineMode string
+
+	// MarketSim, when true and running the in-process engine, starts bot accounts
+	// that continuously quote and trade so the public demo is alive (moving price,
+	// streaming tape, populated depth) even with no human visitors. Ignored for the
+	// gRPC engine (the full stack uses `make seed` instead).
+	MarketSim bool
+	// MarketSimInterval is the tick cadence of the simulator (one round of quotes
+	// + a taker trade per symbol).
+	MarketSimInterval time.Duration
 	// RedisAddr is the Redis endpoint used to cache top-of-book snapshots.
 	RedisAddr string
 	// JWTSecret is the HMAC secret used to verify bearer tokens.
@@ -107,6 +116,8 @@ func Load() (*Config, []string) {
 		ListenAddr:         ":" + port,
 		EngineGRPCAddr:     getenv("ENGINE_GRPC_ADDR", "localhost:50051"),
 		EngineMode:         getenv("ENGINE_MODE", "grpc"),
+		MarketSim:          getenvBool("MARKET_SIM", true),
+		MarketSimInterval:  getenvDuration("MARKET_SIM_INTERVAL", 700*time.Millisecond),
 		RedisAddr:          getenv("REDIS_ADDR", "localhost:6379"),
 		JWTSecret:           jwtSecret,
 		CORSAllowedOrigin:   corsOrigin,
