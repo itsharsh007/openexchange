@@ -43,7 +43,7 @@ func opposite(s Side) Side {
 func (e *LocalEngine) account(accountID string) *ledgerAccount {
 	a, ok := e.accounts[accountID]
 	if !ok {
-		a = &ledgerAccount{cash: startingCashTicks, positions: make(map[string]*position)}
+		a = &ledgerAccount{cash: StartingCashTicks, positions: make(map[string]*position)}
 		e.accounts[accountID] = a
 	}
 	return a
@@ -123,7 +123,7 @@ func (e *LocalEngine) GetAccount(ctx context.Context, accountID string) (Account
 	a, ok := e.accounts[accountID]
 	if !ok {
 		// Always return an empty (not nil) slice so it marshals as [] not null.
-		return AccountSnapshot{AccountID: accountID, CashTicks: startingCashTicks, Positions: []PositionView{}}, nil
+		return AccountSnapshot{AccountID: accountID, CashTicks: StartingCashTicks, Positions: []PositionView{}}, nil
 	}
 
 	var unrealized int64

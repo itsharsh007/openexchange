@@ -3,7 +3,9 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"strconv"
@@ -50,6 +52,10 @@ type Server struct {
 	// Market simulator, set via StartMarketSim (nil unless running the in-process
 	// engine). When present, the /sim/* control routes are registered.
 	sim *marketSim
+	// db is set via WithDB when password auth is enabled (full stack, gRPC engine).
+	// Used by handleAccount to serve balances from Postgres when the engine doesn't
+	// hold an in-process ledger.
+	db *sql.DB
 }
 
 // NewServer constructs the API server with its dependencies injected. orders may be
@@ -298,24 +304,86 @@ func (s *Server) broadcastBook(symbol string) {
 }
 
 // handleAccount: GET /account — the authenticated account's cash, P&L, and
-// positions. Served only when the engine tracks accounts locally (the in-process
-// LocalEngine); with the gRPC engine the authoritative ledger lives in Postgres,
-// so we return an opening snapshot rather than a wrong number.
+// positions. Two paths:
+//   - LocalEngine: the engine holds an in-memory ledger; ask it directly.
+//   - gRPC engine: authoritative ledger lives in Postgres; query it ourselves
+//     (seed cash from account_seeds + trade-driven cash/positions from ledger_entries).
 func (s *Server) handleAccount(w http.ResponseWriter, r *http.Request) {
 	acct := middleware.AccountID(r.Context())
+	ctx, cancel := context.WithTimeout(r.Context(), s.cfg.EngineTimeout)
+	defer cancel()
+
 	ap, ok := s.eng.(engine.AccountProvider)
-	if !ok {
+	if ok {
+		snap, err := ap.GetAccount(ctx, acct)
+		if err != nil {
+			writeErr(w, http.StatusBadGateway, "account unavailable: "+err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, snap)
+		return
+	}
+
+	// gRPC engine path: read from Postgres.
+	if s.db == nil {
 		writeJSON(w, http.StatusOK, engine.AccountSnapshot{AccountID: acct, Positions: []engine.PositionView{}})
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), s.cfg.EngineTimeout)
-	defer cancel()
-	snap, err := ap.GetAccount(ctx, acct)
+	snap, err := s.accountFromDB(ctx, acct)
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, "account unavailable: "+err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, snap)
+}
+
+// accountFromDB builds an AccountSnapshot by reading account_seeds (opening
+// balance) and ledger_entries (trade-driven cash and position deltas) from
+// Postgres. Used by the gRPC engine path where the gateway has no in-memory ledger.
+func (s *Server) accountFromDB(ctx context.Context, accountID string) (engine.AccountSnapshot, error) {
+	// 1. Starting cash from the seed row (inserted at signup).
+	var seedCash int64
+	err := s.db.QueryRowContext(ctx,
+		`SELECT cash_ticks FROM account_seeds WHERE account_id = $1`, accountID,
+	).Scan(&seedCash)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return engine.AccountSnapshot{}, err
+	}
+
+	// 2. Net cash moved by trades (negative = spent buying, positive = received selling).
+	var tradeCash int64
+	_ = s.db.QueryRowContext(ctx,
+		`SELECT COALESCE(SUM(delta), 0) FROM ledger_entries WHERE account_id = $1 AND asset = 'CASH'`,
+		accountID,
+	).Scan(&tradeCash)
+
+	// 3. Open positions: non-CASH assets with a nonzero running balance.
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT asset, SUM(delta) AS qty FROM ledger_entries
+		 WHERE account_id = $1 AND asset != 'CASH'
+		 GROUP BY asset HAVING SUM(delta) != 0`,
+		accountID,
+	)
+	if err != nil {
+		return engine.AccountSnapshot{}, err
+	}
+	defer rows.Close()
+
+	positions := []engine.PositionView{}
+	for rows.Next() {
+		var sym string
+		var qty int64
+		if err := rows.Scan(&sym, &qty); err != nil {
+			continue
+		}
+		positions = append(positions, engine.PositionView{Symbol: sym, Quantity: qty})
+	}
+
+	return engine.AccountSnapshot{
+		AccountID: accountID,
+		CashTicks: seedCash + tradeCash,
+		Positions: positions,
+	}, nil
 }
 
 // handleDemoSession: POST /auth/demo — issues a short-lived HS256 bearer token

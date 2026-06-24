@@ -148,7 +148,7 @@ func main() {
 			log.Fatalf("auth: cannot reach Postgres for user store: %v", err)
 		}
 		tokens := auth.NewTokenService(cfg.JWTSecret, cfg.AccessTokenTTL, cfg.RefreshTokenTTL)
-		srv.WithAuth(auth.NewPostgresStore(db), tokens)
+		srv.WithAuth(auth.NewPostgresStore(db), tokens).WithDB(db)
 		log.Printf("auth: password auth ENABLED (Postgres user store)")
 	} else {
 		log.Printf("auth: password auth disabled (no DATABASE_URL) — guest/demo only")

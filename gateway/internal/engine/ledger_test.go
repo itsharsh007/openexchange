@@ -21,15 +21,15 @@ func TestFillUpdatesBothLedgersAndConservesCash(t *testing.T) {
 	submit(t, e, "bob", SideSell, OrderTypeLimit, 10000, 5)
 
 	a, b := snap(t, e, "alice"), snap(t, e, "bob")
-	if a.CashTicks != startingCashTicks-10000*5 {
-		t.Errorf("buyer cash = %d, want %d", a.CashTicks, startingCashTicks-50000)
+	if a.CashTicks != StartingCashTicks-10000*5 {
+		t.Errorf("buyer cash = %d, want %d", a.CashTicks, StartingCashTicks-50000)
 	}
-	if b.CashTicks != startingCashTicks+10000*5 {
-		t.Errorf("seller cash = %d, want %d", b.CashTicks, startingCashTicks+50000)
+	if b.CashTicks != StartingCashTicks+10000*5 {
+		t.Errorf("seller cash = %d, want %d", b.CashTicks, StartingCashTicks+50000)
 	}
 	// Cash conservation: total cash across both equals 2× the opening balance.
-	if a.CashTicks+b.CashTicks != 2*startingCashTicks {
-		t.Errorf("cash not conserved: %d + %d != %d", a.CashTicks, b.CashTicks, 2*startingCashTicks)
+	if a.CashTicks+b.CashTicks != 2*StartingCashTicks {
+		t.Errorf("cash not conserved: %d + %d != %d", a.CashTicks, b.CashTicks, 2*StartingCashTicks)
 	}
 	if len(a.Positions) != 1 || a.Positions[0].Quantity != 5 || a.Positions[0].AvgPriceTicks != 10000 {
 		t.Errorf("buyer should be long 5 @ 10000, got %+v", a.Positions)
@@ -59,8 +59,8 @@ func TestRealizedPnlOnRoundTrip(t *testing.T) {
 		t.Errorf("flat account should have 0 unrealized, got %d", s.UnrealizedPnlTicks)
 	}
 	// Net cash gain equals the realized profit.
-	if s.CashTicks != startingCashTicks+100 {
-		t.Errorf("cash = %d, want %d", s.CashTicks, startingCashTicks+100)
+	if s.CashTicks != StartingCashTicks+100 {
+		t.Errorf("cash = %d, want %d", s.CashTicks, StartingCashTicks+100)
 	}
 }
 
@@ -105,7 +105,7 @@ func TestRealizedTiesToCashWhenFlat(t *testing.T) {
 		t.Errorf("realized = %d, want -3", s.RealizedPnlTicks)
 	}
 	// THE INVARIANT: flat ⇒ cash change == realized, to the tick.
-	if got := s.CashTicks - startingCashTicks; got != s.RealizedPnlTicks {
+	if got := s.CashTicks - StartingCashTicks; got != s.RealizedPnlTicks {
 		t.Errorf("ledger does not reconcile when flat: cash change %d != realized %d", got, s.RealizedPnlTicks)
 	}
 }
@@ -114,7 +114,7 @@ func TestRealizedTiesToCashWhenFlat(t *testing.T) {
 func TestFreshAccountOpeningBalance(t *testing.T) {
 	e := NewLocalEngine()
 	s := snap(t, e, "newcomer")
-	if s.CashTicks != startingCashTicks || len(s.Positions) != 0 {
+	if s.CashTicks != StartingCashTicks || len(s.Positions) != 0 {
 		t.Errorf("fresh account = %+v, want opening cash and flat", s)
 	}
 }

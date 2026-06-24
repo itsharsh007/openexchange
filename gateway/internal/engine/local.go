@@ -48,9 +48,10 @@ type orderBook struct {
 	orders []*restingOrder
 }
 
-// startingCashTicks is every demo account's opening balance ($10,000), matching
-// the frontend's default so the panel reads consistently before the first trade.
-const startingCashTicks = 1_000_000
+// StartingCashTicks is every demo account's opening balance ($10,000.00 in ticks).
+// Exported so the signup handler can seed the same amount into Postgres for the
+// full-stack gRPC engine path, keeping both modes consistent.
+const StartingCashTicks = 1_000_000
 
 // LocalEngine implements EngineClient with real matching.
 type LocalEngine struct {

@@ -2,12 +2,15 @@ package api
 
 import (
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 
 	"github.com/itsharsh007/openexchange/gateway/internal/auth"
+	"github.com/itsharsh007/openexchange/gateway/internal/engine"
 )
 
 // Password-backed auth handlers (signup / login / refresh). These are only wired
@@ -25,6 +28,13 @@ const minPasswordLen = 8
 func (s *Server) WithAuth(users auth.UserStore, tokens *auth.TokenService) *Server {
 	s.users = users
 	s.tokens = tokens
+	return s
+}
+
+// WithDB attaches the Postgres pool so the gRPC-mode gateway can serve account
+// balances from the ledger (seed + trade-driven cash and positions).
+func (s *Server) WithDB(db *sql.DB) *Server {
+	s.db = db
 	return s
 }
 
@@ -74,6 +84,17 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 		}
 		writeErr(w, http.StatusInternalServerError, "could not create account")
 		return
+	}
+	// Credit the new account with starting cash so the dashboard shows a usable
+	// balance immediately — same amount as the in-process engine's demo accounts.
+	if s.db != nil {
+		if _, err := s.db.ExecContext(r.Context(),
+			`INSERT INTO account_seeds (account_id, cash_ticks) VALUES ($1, $2)`,
+			u.AccountID, engine.StartingCashTicks,
+		); err != nil {
+			log.Printf("WARN signup: could not seed account %s: %v", u.AccountID, err)
+			// Non-fatal: account is created and functional; balance starts at 0.
+		}
 	}
 	s.issueTokens(w, u.AccountID)
 }
