@@ -53,7 +53,7 @@ test: ## Run every service's test suite
 	cd engine && ./gradlew test
 	cd gateway && go test ./...
 	cd risk && pytest -q
-	cd web && npm test --silent
+	cd web && { [ -d node_modules ] || npm ci; } && npm test --silent
 
 loadtest: ## Load test the gateway (read + write paths) — records throughput/latency
 	./scripts/loadtest.sh
