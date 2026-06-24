@@ -143,7 +143,7 @@ func (e *LocalEngine) SubmitOrder(ctx context.Context, o NewOrder) (OrderAck, er
 	}
 
 	for remaining > 0 {
-		maker := e.bestOpposite(b, o.Side)
+		maker := e.bestOpposite(b, o.Side, o.AccountID)
 		if maker == nil || !crosses(maker.price) {
 			break
 		}
@@ -201,7 +201,10 @@ func (e *LocalEngine) SubmitOrder(ctx context.Context, o NewOrder) (OrderAck, er
 // bestOpposite returns the best resting order on the side opposite `incoming`:
 // highest-priced bid for an incoming sell, lowest-priced ask for an incoming buy,
 // breaking ties by earliest arrival (time priority).
-func (e *LocalEngine) bestOpposite(b *orderBook, incoming Side) *restingOrder {
+//
+// Self-match prevention (skip policy): resting orders from takerAccount are skipped,
+// so an account never trades against itself; its own orders stay resting. See ADR 0008.
+func (e *LocalEngine) bestOpposite(b *orderBook, incoming Side, takerAccount string) *restingOrder {
 	want := SideSell // a buy matches resting sells
 	if incoming == SideSell {
 		want = SideBuy
@@ -210,6 +213,9 @@ func (e *LocalEngine) bestOpposite(b *orderBook, incoming Side) *restingOrder {
 	for _, ro := range b.orders {
 		if ro.side != want {
 			continue
+		}
+		if ro.accountID == takerAccount {
+			continue // self-match prevention: never trade against our own resting order
 		}
 		if best == nil || betterPrice(want, ro.price, best.price) ||
 			(ro.price == best.price && ro.seq < best.seq) {

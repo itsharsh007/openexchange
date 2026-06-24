@@ -44,6 +44,28 @@ func TestCrossingOrdersTradeBetweenAccounts(t *testing.T) {
 	}
 }
 
+// Self-match prevention: one account can't trade with itself. Its crossing order
+// skips its own resting orders (which stay put) and only matches other accounts.
+func TestSelfMatchIsPrevented(t *testing.T) {
+	e := NewLocalEngine() // empty book, no seeded maker
+
+	rest := submit(t, e, "alice", SideBuy, OrderTypeLimit, 10000, 5)
+	// Alice's own crossing sell must NOT trade against her resting bid.
+	self := submit(t, e, "alice", SideSell, OrderTypeLimit, 10000, 5)
+	if self.Status != StatusAccepted || self.FilledQuantity != 0 || len(self.Trades) != 0 {
+		t.Fatalf("self-match must be prevented (rest, no fill), got %+v", self)
+	}
+
+	// A different account at the same price DOES fill against Alice's resting bid.
+	other := submit(t, e, "bob", SideSell, OrderTypeLimit, 10000, 5)
+	if other.Status != StatusFilled || other.FilledQuantity != 5 {
+		t.Fatalf("other account should fill against the resting bid, got %+v", other)
+	}
+	if other.Trades[0].BuyOrderID != rest.OrderID {
+		t.Fatalf("trade should hit alice's resting bid %s, got %+v", rest.OrderID, other.Trades[0])
+	}
+}
+
 // Price-time priority: among equal-priced resting orders, the earliest fills first.
 func TestPriceTimePriority(t *testing.T) {
 	e := NewLocalEngine()

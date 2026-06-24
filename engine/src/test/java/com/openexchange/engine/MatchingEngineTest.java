@@ -20,8 +20,10 @@ class MatchingEngineTest {
 
     private Order order(MatchingEngine eng, String symbol, Side side, long price, long qty) {
         long seq = eng.nextSequence();
+        // Distinct account per order so orders cross normally (self-match prevention skips
+        // same-account orders — see OrderBook).
         return new Order(
-                "o" + seq, "c" + seq, "acct", symbol, side, OrderType.LIMIT, price, qty, seq);
+                "o" + seq, "c" + seq, "acct" + seq, symbol, side, OrderType.LIMIT, price, qty, seq);
     }
 
     @Test

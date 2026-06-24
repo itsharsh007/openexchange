@@ -21,8 +21,14 @@ class OrderBookTest {
         return new OrderBook("AAPL", () -> 1_000L); // fixed clock
     }
 
+    // Default: each order gets its own account, so unrelated orders cross normally. Tests that
+    // exercise self-match prevention pass an explicit shared account via the overload below.
     private Order order(String id, Side side, OrderType type, long price, long qty) {
-        return new Order(id, "c-" + id, "acct", "AAPL", side, type, price, qty, seq.incrementAndGet());
+        return order(id, "acct-" + id, side, type, price, qty);
+    }
+
+    private Order order(String id, String account, Side side, OrderType type, long price, long qty) {
+        return new Order(id, "c-" + id, account, "AAPL", side, type, price, qty, seq.incrementAndGet());
     }
 
     @Test
@@ -128,6 +134,50 @@ class OrderBookTest {
         assertFalse(book.contains("o1"));
         assertNull(book.bestBid());
         assertFalse(book.cancel("o1")); // second cancel is a no-op
+    }
+
+    @Test
+    void selfMatchIsPreventedAndBothOrdersRest() {
+        OrderBook book = newBook();
+        book.submit(order("mine_buy", "acctA", Side.BUY, OrderType.LIMIT, 15000, 100));
+        // Same account, crossing price — must NOT trade with itself.
+        MatchResult r = book.submit(order("mine_sell", "acctA", Side.SELL, OrderType.LIMIT, 15000, 100));
+
+        assertEquals(OrderStatus.ACCEPTED, r.status());
+        assertTrue(r.trades().isEmpty());
+        // Both orders remain resting (a same-account locked book is fine: they never match).
+        assertTrue(book.contains("mine_buy"));
+        assertTrue(book.contains("mine_sell"));
+        assertEquals(15000L, book.bestBid());
+        assertEquals(15000L, book.bestAsk());
+    }
+
+    @Test
+    void skipsOwnOrderButFillsOtherAccountAtSameLevel() {
+        OrderBook book = newBook();
+        book.submit(order("mine_buy", "acctA", Side.BUY, OrderType.LIMIT, 15000, 100)); // ahead in FIFO
+        book.submit(order("other_buy", "acctB", Side.BUY, OrderType.LIMIT, 15000, 100));
+        MatchResult r = book.submit(order("mine_sell", "acctA", Side.SELL, OrderType.LIMIT, 15000, 100));
+
+        assertEquals(OrderStatus.FILLED, r.status());
+        assertEquals(1, r.trades().size());
+        // Skipped our own (earlier) bid, matched the other account's bid behind it.
+        assertEquals("other_buy", r.trades().get(0).buyOrderId());
+        assertFalse(book.contains("other_buy"));
+        // Our own bid is left untouched and still resting at the front of the level.
+        assertTrue(book.contains("mine_buy"));
+        assertEquals(15000L, book.bestBid());
+    }
+
+    @Test
+    void marketOrderCannotSweepOwnLiquidity() {
+        OrderBook book = newBook();
+        book.submit(order("mine_ask", "acctA", Side.SELL, OrderType.LIMIT, 15000, 100));
+        MatchResult r = book.submit(order("mine_mkt", "acctA", Side.BUY, OrderType.MARKET, 0, 100));
+
+        assertEquals(OrderStatus.REJECTED, r.status()); // no fillable (other-account) liquidity
+        assertEquals(0, r.filledQuantity());
+        assertTrue(book.contains("mine_ask")); // own resting ask untouched
     }
 
     @Test

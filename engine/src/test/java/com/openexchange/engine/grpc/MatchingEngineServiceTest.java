@@ -60,7 +60,9 @@ class MatchingEngineServiceTest {
     private NewOrder.Builder newOrder(Side side, long price, long qty) {
         return NewOrder.newBuilder()
                 .setClientOrderId("c-" + side + "-" + price)
-                .setAccountId("acct")
+                // Account per side so a buy and a crossing sell belong to different accounts and
+                // actually match (self-match prevention skips same-account orders — see OrderBook).
+                .setAccountId("acct-" + side)
                 .setSymbol("AAPL")
                 .setSide(side)
                 .setType(OrderType.LIMIT)

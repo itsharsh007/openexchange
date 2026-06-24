@@ -9,6 +9,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -58,15 +59,30 @@ public final class OrderBook {
         List<Trade> trades = new ArrayList<>();
         TreeMap<Long, ArrayDeque<Order>> opposite = (incoming.side() == Side.BUY) ? asks : bids;
 
-        while (incoming.remaining() > 0 && !opposite.isEmpty()) {
-            Map.Entry<Long, ArrayDeque<Order>> best = opposite.firstEntry();
-            long bestPrice = best.getKey();
+        // Walk price levels best-first via an iterator so a level made up entirely of the
+        // incoming account's own orders is simply passed over (see self-match prevention below)
+        // instead of re-selected forever as firstEntry().
+        Iterator<Map.Entry<Long, ArrayDeque<Order>>> levelIt = opposite.entrySet().iterator();
+        while (incoming.remaining() > 0 && levelIt.hasNext()) {
+            Map.Entry<Long, ArrayDeque<Order>> level = levelIt.next();
+            long bestPrice = level.getKey();
             if (!crosses(incoming, bestPrice)) {
-                break; // best price no longer satisfies a limit order — stop
+                break; // levels are sorted, so nothing further can cross — stop
             }
-            ArrayDeque<Order> queue = best.getValue();
+            ArrayDeque<Order> queue = level.getValue();
+            // Self-match prevention (skip policy): an order never trades against another order
+            // from the same account. We pull such resting orders aside, match the rest, then
+            // restore them to their original time-priority slot. See ADR 0008.
+            ArrayDeque<Order> ownHeld = null;
             while (!queue.isEmpty() && incoming.remaining() > 0) {
                 Order resting = queue.peekFirst();
+                if (resting.accountId().equals(incoming.accountId())) {
+                    if (ownHeld == null) {
+                        ownHeld = new ArrayDeque<>();
+                    }
+                    ownHeld.addLast(queue.pollFirst()); // hold aside, keep it resting
+                    continue;
+                }
                 long qty = Math.min(incoming.remaining(), resting.remaining());
                 trades.add(makeTrade(incoming, resting, bestPrice, qty));
                 incoming.reduce(qty);
@@ -76,8 +92,14 @@ public final class OrderBook {
                     index.remove(resting.orderId());
                 }
             }
+            if (ownHeld != null) {
+                // Restore in original order at the front: addFirst in reverse preserves FIFO.
+                while (!ownHeld.isEmpty()) {
+                    queue.addFirst(ownHeld.pollLast());
+                }
+            }
             if (queue.isEmpty()) {
-                opposite.remove(bestPrice);
+                levelIt.remove(); // level fully consumed
             }
         }
 
